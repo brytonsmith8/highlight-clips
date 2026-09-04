@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Highlight Clips — Bryt Vision Media
 
-## Getting Started
+A temporary sports highlight clip marketplace. Bryt Vision Media films local
+games, cuts short highlight clips, and sells them individually to athletes,
+parents, and fans.
 
-First, run the development server:
+- Customers browse by **Game → Team → Category → Clip**, watch a low-quality
+  watermarked preview, and buy the clips they want.
+- Guest checkout only (no customer accounts). After payment the customer gets a
+  private `/order/<token>` link by email to download the high-quality files.
+- Two independent clocks: **game expiration** (how long a game stays public) and
+  **purchase download window** (how long after buying a customer can download).
+- Originals live in **private** storage and are only reachable through
+  short-lived signed URLs issued after server-side authorization.
+- Not an archive: original files are deleted once no active download window
+  needs them; order records are kept permanently.
+
+## Stack
+
+| Concern | Tool |
+| --- | --- |
+| App framework | Next.js 16 (App Router) |
+| Hosting / CI | Vercel (auto-deploy on push to `main`) |
+| Database, storage, auth | Supabase |
+| Payments | Stripe (added in a later layer) |
+| Transactional email | Resend (added in a later layer) |
+| Styling | Tailwind CSS v4 |
+
+## Local development
 
 ```bash
+cp .env.example .env.local   # then fill in the Supabase values
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See `.env.example`. Local values go in `.env.local` (gitignored); deployed
+values are set in the Vercel project settings for both Production and Preview.
 
-## Learn More
+| Variable | Notes |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anon key (RLS-protected) |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only.** Bypasses RLS. Never sent to the browser. |
+| `NEXT_PUBLIC_SITE_URL` | Absolute origin, no trailing slash |
 
-To learn more about Next.js, take a look at the following resources:
+## Database migrations
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+SQL migrations live in `supabase/migrations/` and are applied by pasting them
+into the **Supabase Dashboard → SQL Editor** in filename order. (Added in
+Layer 1.)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project layout
 
-## Deploy on Vercel
+```
+app/                 routes (App Router)
+components/           shared UI
+lib/
+  env.ts             validated environment-variable access
+  supabase/
+    client.ts        browser client (anon key)
+    server.ts        server client for RSC / actions / route handlers (anon key)
+    service.ts       service-role client (server only, bypasses RLS)
+supabase/migrations/ SQL migrations (Layer 1+)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Build status
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is being built in reviewed layers. **Layer 0 (foundation)** is
+complete: repo consolidation, Supabase client wiring, environment handling, and
+a mobile-first homepage shell. No database schema or product features yet.
