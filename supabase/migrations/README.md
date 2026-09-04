@@ -15,10 +15,30 @@ Files are ordered and are **not** idempotent as a whole — run each one once, i
 order. Re-running `0001_schema.sql` will error on `create table` (that's
 expected; it means it already ran).
 
+## One-time: reset the prototype schema
+
+`0000_reset_prototype.sql` removes an earlier athlete-centric prototype (`games`
+without a `slug`, plus `athletes` / `clips` / `purchases`) that was created in
+this project before the approved schema. Run it **once, before `0001`**.
+
+First confirm the prototype tables are empty:
+
+```sql
+select
+  coalesce((select count(*) from public.games),     0) as games,
+  coalesce((select count(*) from public.clips),     0) as clips,
+  coalesce((select count(*) from public.athletes),  0) as athletes,
+  coalesce((select count(*) from public.purchases), 0) as purchases;
+```
+
+If every count is `0`, run `0000_reset_prototype.sql` (it also self-aborts if any
+of those tables still hold rows). On a fresh project this file is a no-op.
+
 ## Migration log
 
 | File | Applied on | By |
 | --- | --- | --- |
+| `0000_reset_prototype.sql` | _pending_ | |
 | `0001_schema.sql` | _pending_ | |
 | `0002_rls.sql` | _pending_ | |
 | `0003_storage.sql` | _pending_ | |
