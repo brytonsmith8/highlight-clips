@@ -62,8 +62,9 @@ export const getClipsForGame = cache(
 
     let query = supabase
       .from("clips")
-      .select("id, price, game_id, athlete_id, preview_url, created_at")
-      .eq("game_id", gameId);
+      .select("id, price, game_id, athlete_id, preview_url, published, created_at")
+      .eq("game_id", gameId)
+      .eq("published", true);
     if (opts.athleteId) query = query.eq("athlete_id", opts.athleteId);
 
     const { data: clips, error } = await query;
@@ -96,14 +97,15 @@ export const getClipsForGame = cache(
   },
 );
 
-/** Distinct athletes who have at least one clip in this game — used for the filter pills. */
+/** Distinct athletes who have at least one *published* clip in this game — used for the filter pills. */
 export const getAthletesForGame = cache(async (gameId: string): Promise<Athlete[]> => {
   const supabase = await createClient();
 
   const { data: clips, error: clipsError } = await supabase
     .from("clips")
     .select("athlete_id")
-    .eq("game_id", gameId);
+    .eq("game_id", gameId)
+    .eq("published", true);
   if (clipsError || !clips) {
     if (clipsError) console.error("[queries] getAthletesForGame (clips):", clipsError.message);
     return [];

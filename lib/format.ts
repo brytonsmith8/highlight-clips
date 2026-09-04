@@ -1,10 +1,6 @@
 /** Formatting helpers shared by server and client components. */
 
-/**
- * `clips.price` has no documented unit in the database. Treated here as
- * whole dollars (e.g. 15 -> "$15.00") until confirmed otherwise — if it
- * turns out to be cents, divide by 100 here and nowhere else.
- */
+/** `clips.price` is confirmed to be whole dollars (e.g. 15 -> "$15.00"). */
 export function formatPrice(price: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

@@ -27,10 +27,12 @@ export interface Athlete {
 
 export interface Clip {
   id: string;
-  /** Unit unconfirmed in the database — currently treated as whole dollars. */
+  /** Confirmed as whole dollars (e.g. 15 -> $15.00). */
   price: number;
   game_id: string;
   athlete_id: string | null;
   preview_url: string | null;
+  /** Gates public visibility. Public queries always filter to published = true. */
+  published: boolean;
   created_at: string;
 }
