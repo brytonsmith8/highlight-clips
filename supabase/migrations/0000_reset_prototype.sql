@@ -1,35 +1,47 @@
 -- Layer 1 · 0000_reset_prototype.sql
 --
--- ONE-TIME, DESTRUCTIVE cleanup for the Supabase project rtnucytxpbwvkzsauwbr.
+-- ONE-TIME cleanup for the Supabase project rtnucytxpbwvkzsauwbr.
 --
 -- Before the approved schema was applied, an earlier athlete-centric prototype
--- (games without a slug, plus athletes / clips / purchases) was created in this
--- project. Those tables conflict with 0001_schema.sql. This script drops them so
--- the approved migrations apply cleanly.
+-- (games without a slug, plus athletes / clips / purchases) was created here.
+-- Those tables conflict with 0001_schema.sql. This script drops them so the
+-- approved migrations apply cleanly.
 --
--- On a fresh project these tables do not exist and every statement is a no-op.
---
--- SAFETY: run the count check first (see supabase/migrations/README.md). This
--- script aborts if any prototype table still holds rows, so pasting it can't
--- silently delete real data.
+-- SAFETY: this DROPS four tables in `public`, but only after checking that each
+-- non-empty table has been fully copied into schema `prototype_backup` (run
+-- _prototype_backup.sql first). If a table is absent or already empty it is
+-- skipped. On a fresh project every statement is a no-op.
 
 do $$
 declare
-  n_games     bigint := 0;
-  n_clips     bigint := 0;
-  n_athletes  bigint := 0;
-  n_purchases bigint := 0;
+  t   text;
+  src bigint;
+  bak bigint;
 begin
-  if to_regclass('public.games')     is not null then execute 'select count(*) from public.games'     into n_games;     end if;
-  if to_regclass('public.clips')     is not null then execute 'select count(*) from public.clips'     into n_clips;     end if;
-  if to_regclass('public.athletes')  is not null then execute 'select count(*) from public.athletes'  into n_athletes;  end if;
-  if to_regclass('public.purchases') is not null then execute 'select count(*) from public.purchases' into n_purchases; end if;
+  foreach t in array array['games', 'clips', 'athletes', 'purchases']
+  loop
+    if to_regclass('public.' || t) is null then
+      continue;                                   -- already gone
+    end if;
 
-  if n_games + n_clips + n_athletes + n_purchases > 0 then
-    raise exception
-      'Prototype tables are not empty (games=%, clips=%, athletes=%, purchases=%). Aborting reset. Export or migrate that data first, then drop the tables manually.',
-      n_games, n_clips, n_athletes, n_purchases;
-  end if;
+    execute format('select count(*) from public.%I', t) into src;
+    if src = 0 then
+      continue;                                   -- nothing to preserve
+    end if;
+
+    if to_regclass('prototype_backup.' || t) is null then
+      raise exception
+        'public.% has % row(s) and no backup. Run _prototype_backup.sql first.',
+        t, src;
+    end if;
+
+    execute format('select count(*) from prototype_backup.%I', t) into bak;
+    if bak < src then
+      raise exception
+        'Backup prototype_backup.% has % row(s) but public.% has %. Aborting.',
+        t, bak, t, src;
+    end if;
+  end loop;
 end
 $$;
 

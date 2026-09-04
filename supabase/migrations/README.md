@@ -17,27 +17,25 @@ expected; it means it already ran).
 
 ## One-time: reset the prototype schema
 
-`0000_reset_prototype.sql` removes an earlier athlete-centric prototype (`games`
-without a `slug`, plus `athletes` / `clips` / `purchases`) that was created in
-this project before the approved schema. Run it **once, before `0001`**.
+Project `rtnucytxpbwvkzsauwbr` contains an earlier athlete-centric prototype
+(`games` without a `slug`, plus `athletes` / `clips` / `purchases`) with a
+handful of records. It conflicts with `0001_schema.sql` and must be removed
+first, without losing the data.
 
-First confirm the prototype tables are empty:
+1. **`_prototype_backup.sql`** — copies the four prototype tables into a
+   `prototype_backup` schema. Non-destructive; nothing in `public` changes.
+2. **`0000_reset_prototype.sql`** — drops the four `public` tables, but only
+   after verifying each non-empty one is fully present in `prototype_backup`.
+   Skips absent/empty tables, so it is a no-op on a fresh project.
 
-```sql
-select
-  coalesce((select count(*) from public.games),     0) as games,
-  coalesce((select count(*) from public.clips),     0) as clips,
-  coalesce((select count(*) from public.athletes),  0) as athletes,
-  coalesce((select count(*) from public.purchases), 0) as purchases;
-```
-
-If every count is `0`, run `0000_reset_prototype.sql` (it also self-aborts if any
-of those tables still hold rows). On a fresh project this file is a no-op.
+The prototype rows are also exported to `docs/prototype-data-backup.json` for
+an out-of-database record.
 
 ## Migration log
 
 | File | Applied on | By |
 | --- | --- | --- |
+| `_prototype_backup.sql` | _pending_ | |
 | `0000_reset_prototype.sql` | _pending_ | |
 | `0001_schema.sql` | _pending_ | |
 | `0002_rls.sql` | _pending_ | |
