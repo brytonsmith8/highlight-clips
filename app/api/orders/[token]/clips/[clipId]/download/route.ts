@@ -8,6 +8,17 @@ interface DownloadRouteParams {
   params: Promise<{ token: string; clipId: string }>;
 }
 
+/** "Riverside Wolves vs Lakeside Bears" -> "riverside-wolves-vs-lakeside-bears" */
+function slugify(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "clip"
+  );
+}
+
 /**
  * Gated download: re-verifies the purchase (token + clip) and the download
  * window on every request before ever reading `full_url`. `full_url` is
@@ -31,7 +42,7 @@ export async function GET(_request: Request, { params }: DownloadRouteParams) {
   const supabase = createServiceClient();
   const { data: clip, error } = await supabase
     .from("clips")
-    .select("full_url")
+    .select("full_url, game_id")
     .eq("id", clipId)
     .maybeSingle();
 
@@ -42,7 +53,19 @@ export async function GET(_request: Request, { params }: DownloadRouteParams) {
     return NextResponse.json({ error: "Original file unavailable." }, { status: 404 });
   }
 
-  const downloadUrl = await resolveClipDownloadUrl(clip.full_url);
+  // Build a clean, human-readable download filename so every browser saves a
+  // proper `.mp4` (QuickTime and others reject files without a real extension).
+  const { data: game } = await supabase
+    .from("games")
+    .select("school_a, school_b")
+    .eq("id", clip.game_id)
+    .maybeSingle();
+  const baseName = game
+    ? slugify(`${game.school_a} vs ${game.school_b}`)
+    : "highlight-clip";
+  const filename = `${baseName}.mp4`;
+
+  const downloadUrl = await resolveClipDownloadUrl(clip.full_url, filename);
   if (!downloadUrl) {
     return NextResponse.json({ error: "Original file unavailable." }, { status: 404 });
   }

@@ -24,6 +24,7 @@ const SIGNED_URL_TTL_SECONDS = 60;
  */
 export async function resolveClipDownloadUrl(
   fullUrl: string,
+  downloadFilename?: string,
 ): Promise<string | null> {
   if (/^https?:\/\//i.test(fullUrl)) {
     return fullUrl;
@@ -32,9 +33,12 @@ export async function resolveClipDownloadUrl(
   const supabase = createServiceClient();
   const { data, error } = await supabase.storage
     .from(CLIP_ORIGINALS_BUCKET)
-    // `download: true` sets Content-Disposition: attachment so the browser
-    // saves the file rather than navigating to / playing it.
-    .createSignedUrl(fullUrl, SIGNED_URL_TTL_SECONDS, { download: true });
+    // An explicit filename gives Content-Disposition: attachment;
+    // filename="…​.mp4" so every browser saves a properly-named .mp4
+    // (players like QuickTime reject a file without a real extension).
+    .createSignedUrl(fullUrl, SIGNED_URL_TTL_SECONDS, {
+      download: downloadFilename ?? true,
+    });
 
   if (error || !data?.signedUrl) {
     console.error("[storage] createSignedUrl failed:", error?.message);
