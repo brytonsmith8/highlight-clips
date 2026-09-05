@@ -37,7 +37,7 @@ export function ClipCard({ clip }: { clip: ClipWithAthlete }) {
         </p>
         <p className="whitespace-nowrap font-semibold">{formatPrice(clip.price)}</p>
       </div>
-      <BuyButton clipId={clip.id} />
+      <BuyButton clipId={clip.id} price={clip.price} />
     </div>
   );
 }
