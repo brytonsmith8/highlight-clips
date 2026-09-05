@@ -1,5 +1,6 @@
 import type { ClipWithAthlete } from "@/lib/queries";
 import { formatPrice } from "@/lib/format";
+import { BuyButton } from "@/components/buy-button";
 
 /**
  * `preview_url` is a plain public URL column in this schema (no private
@@ -36,6 +37,7 @@ export function ClipCard({ clip }: { clip: ClipWithAthlete }) {
         </p>
         <p className="whitespace-nowrap font-semibold">{formatPrice(clip.price)}</p>
       </div>
+      <BuyButton clipId={clip.id} />
     </div>
   );
 }
