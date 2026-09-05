@@ -5,55 +5,73 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
+  CLIP_ORIGINALS_BUCKET,
+  CLIP_PREVIEWS_BUCKET,
+  clipObjectExists,
+  clipPreviewPublicUrl,
+  createClipUploadUrls,
   deleteClipOriginal,
   deleteClipPreview,
-  uploadClipOriginal,
-  uploadClipPreview,
+  type ClipUploadUrls,
 } from "@/lib/storage";
 
-export async function createClip(formData: FormData) {
+/**
+ * Step 1 of the direct-to-storage upload: hand the browser one-time signed
+ * upload URLs. Returns only small strings — no file data passes through here.
+ */
+export async function startClipUpload(input: {
+  previewExt: string;
+  originalExt: string;
+}): Promise<ClipUploadUrls> {
+  await requireAdmin();
+  const clipId = crypto.randomUUID();
+  return createClipUploadUrls(clipId, input.previewExt, input.originalExt);
+}
+
+/**
+ * Step 2: after the browser has uploaded both files straight to Storage,
+ * verify they landed and record the (unpublished) clip row.
+ */
+export async function finalizeClip(input: {
+  clipId: string;
+  gameId: string;
+  athleteId: string | null;
+  price: number;
+  previewPath: string;
+  originalPath: string;
+}) {
   await requireAdmin();
 
-  const game_id = String(formData.get("game_id") ?? "").trim();
-  const athleteId = String(formData.get("athlete_id") ?? "").trim();
-  const priceRaw = String(formData.get("price") ?? "").trim();
-  const previewFile = formData.get("preview_file");
-  const originalFile = formData.get("original_file");
+  const { clipId, gameId, athleteId, price, previewPath, originalPath } = input;
 
-  if (!game_id || !priceRaw) {
-    throw new Error("game_id and price are required.");
-  }
-  if (!(previewFile instanceof File) || previewFile.size === 0) {
-    throw new Error("A preview video file is required.");
-  }
-  if (!(originalFile instanceof File) || originalFile.size === 0) {
-    throw new Error("An original video file is required.");
-  }
-  const price = Number(priceRaw);
+  if (!gameId) throw new Error("A game is required.");
   if (!Number.isFinite(price) || price < 0) {
-    throw new Error("price must be a non-negative number.");
+    throw new Error("Price must be a non-negative number.");
   }
 
-  // Upload both files first, then insert the row.
-  const clipId = crypto.randomUUID();
-  const previewUrl = await uploadClipPreview(clipId, previewFile);
-  const originalKey = await uploadClipOriginal(clipId, originalFile);
+  const [previewOk, originalOk] = await Promise.all([
+    clipObjectExists(CLIP_PREVIEWS_BUCKET, previewPath),
+    clipObjectExists(CLIP_ORIGINALS_BUCKET, originalPath),
+  ]);
+  if (!previewOk || !originalOk) {
+    throw new Error("Upload did not complete — please try again.");
+  }
 
   const supabase = createServiceClient();
   const { error } = await supabase.from("clips").insert({
     id: clipId,
-    game_id,
+    game_id: gameId,
     athlete_id: athleteId || null,
     price,
-    preview_url: previewUrl,
-    full_url: originalKey,
+    preview_url: clipPreviewPublicUrl(previewPath),
+    full_url: originalPath, // object key in clip-originals; resolveClipDownloadUrl signs it
     published: false,
     created_at: new Date().toISOString(),
   });
+
   if (error) {
-    // roll back both orphaned uploads
-    await deleteClipPreview(`${clipId}.${previewFile.name.split(".").pop() || "mp4"}`);
-    await deleteClipOriginal(originalKey);
+    await deleteClipPreview(previewPath);
+    await deleteClipOriginal(originalPath);
     throw new Error(error.message);
   }
 

@@ -1,13 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    // Admin clip uploads (original video) go through a Server Action.
-    // Default Server Action body limit is 1 MB.
-    serverActions: {
-      bodySizeLimit: "50mb",
-    },
-  },
+  /* Clip files upload directly from the browser to Supabase Storage
+     (signed upload URLs), so no large body passes through a Server Action. */
 };
 
 export default nextConfig;

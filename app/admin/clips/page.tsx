@@ -7,7 +7,8 @@ import {
   adminListGames,
 } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
-import { createClip, setClipPublished } from "./actions";
+import { NewClipForm } from "@/components/admin/new-clip-form";
+import { setClipPublished } from "./actions";
 
 export const metadata: Metadata = {
   title: "Admin · Clips",
@@ -29,75 +30,18 @@ export default async function AdminClipsPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-bold tracking-tight">Clips</h1>
 
-      <form
-        action={createClip}
-        className="mt-6 space-y-3 rounded-lg border border-border p-4"
-      >
-        <h2 className="font-semibold">New clip</h2>
-        <select
-          name="game_id"
-          required
-          defaultValue=""
-          className="w-full rounded border border-border px-3 py-2"
-        >
-          <option value="" disabled>
-            Select game…
-          </option>
-          {games.map((game) => (
-            <option key={game.id} value={game.id}>
-              {game.school_a} vs {game.school_b}
-            </option>
-          ))}
-        </select>
-        <select
-          name="athlete_id"
-          defaultValue=""
-          className="w-full rounded border border-border px-3 py-2"
-        >
-          <option value="">No athlete</option>
-          {athletes.map((athlete) => (
-            <option key={athlete.id} value={athlete.id}>
-              {athlete.name}
-              {athlete.jersey_number ? ` #${athlete.jersey_number}` : ""}
-            </option>
-          ))}
-        </select>
-        <input
-          name="price"
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Price (USD)"
-          required
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <label className="block text-sm text-muted">
-          Preview video file (low quality / watermarked — shown publicly)
-          <input
-            name="preview_file"
-            type="file"
-            accept="video/mp4,video/quicktime"
-            required
-            className="mt-1 w-full rounded border border-border px-3 py-2 text-foreground"
-          />
-        </label>
-        <label className="block text-sm text-muted">
-          Original video file (uploaded to private storage, never shown publicly)
-          <input
-            name="original_file"
-            type="file"
-            accept="video/mp4,video/quicktime"
-            required
-            className="mt-1 w-full rounded border border-border px-3 py-2 text-foreground"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded bg-accent px-3 py-2 font-medium text-white"
-        >
-          Create clip (unpublished)
-        </button>
-      </form>
+      <NewClipForm
+        games={games.map((game) => ({
+          id: game.id,
+          label: `${game.school_a} vs ${game.school_b}`,
+        }))}
+        athletes={athletes.map((athlete) => ({
+          id: athlete.id,
+          label: athlete.jersey_number
+            ? `${athlete.name} #${athlete.jersey_number}`
+            : athlete.name,
+        }))}
+      />
 
       <div className="mt-6 space-y-2">
         {clips.length === 0 && <p className="text-muted">No clips yet.</p>}

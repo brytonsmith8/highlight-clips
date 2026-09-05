@@ -1,5 +1,6 @@
 import "server-only";
 
+import { publicEnv } from "@/lib/env";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /** Private bucket holding clip original (full-quality) files. */
@@ -47,59 +48,99 @@ export async function resolveClipDownloadUrl(
   return data.signedUrl;
 }
 
-/** Upload a clip's original video; returns the object key to store in `full_url`. */
-export async function uploadClipOriginal(
+// ── Direct-to-storage upload for the admin clip form ────────────────────────
+//
+// Clip files (preview + original) are uploaded straight from the browser to
+// Supabase Storage using one-time signed upload URLs, so the file bytes never
+// pass through a Vercel serverless function (hard 4.5 MB request-body cap).
+
+const ALLOWED_EXTS = new Set(["mp4", "mov", "m4v"]);
+
+function normalizeExt(nameOrExt: string): string {
+  const raw = nameOrExt.includes(".")
+    ? nameOrExt.split(".").pop() ?? ""
+    : nameOrExt;
+  const ext = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return ALLOWED_EXTS.has(ext) ? ext : "mp4";
+}
+
+export interface ClipUploadTarget {
+  bucket: string;
+  path: string;
+  token: string;
+  signedUrl: string;
+}
+
+export interface ClipUploadUrls {
+  clipId: string;
+  preview: ClipUploadTarget;
+  original: ClipUploadTarget;
+}
+
+/** Create one-time signed upload URLs for a new clip's preview + original. */
+export async function createClipUploadUrls(
   clipId: string,
-  file: File,
-): Promise<string> {
+  previewExt: string,
+  originalExt: string,
+): Promise<ClipUploadUrls> {
   const supabase = createServiceClient();
-  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
-  const key = `${clipId}.${ext}`;
+  const previewPath = `${clipId}.${normalizeExt(previewExt)}`;
+  const originalPath = `${clipId}.${normalizeExt(originalExt)}`;
 
-  const { error } = await supabase.storage
-    .from(CLIP_ORIGINALS_BUCKET)
-    .upload(key, file, {
-      contentType: file.type || "video/mp4",
-      upsert: true,
-    });
+  const [prev, orig] = await Promise.all([
+    supabase.storage
+      .from(CLIP_PREVIEWS_BUCKET)
+      .createSignedUploadUrl(previewPath, { upsert: true }),
+    supabase.storage
+      .from(CLIP_ORIGINALS_BUCKET)
+      .createSignedUploadUrl(originalPath, { upsert: true }),
+  ]);
 
-  if (error) {
-    throw new Error(`Failed to upload original file: ${error.message}`);
+  if (prev.error || !prev.data) {
+    throw new Error(`Could not start preview upload: ${prev.error?.message}`);
   }
-  return key;
+  if (orig.error || !orig.data) {
+    throw new Error(`Could not start original upload: ${orig.error?.message}`);
+  }
+
+  return {
+    clipId,
+    preview: {
+      bucket: CLIP_PREVIEWS_BUCKET,
+      path: previewPath,
+      token: prev.data.token,
+      signedUrl: prev.data.signedUrl,
+    },
+    original: {
+      bucket: CLIP_ORIGINALS_BUCKET,
+      path: originalPath,
+      token: orig.data.token,
+      signedUrl: orig.data.signedUrl,
+    },
+  };
+}
+
+/** Public URL for an object in the public previews bucket. */
+export function clipPreviewPublicUrl(path: string): string {
+  return `${publicEnv.supabaseUrl}/storage/v1/object/public/${CLIP_PREVIEWS_BUCKET}/${path}`;
+}
+
+/** Whether an object actually landed at `bucket/path`. */
+export async function clipObjectExists(
+  bucket: string,
+  path: string,
+): Promise<boolean> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 10);
+  return !error && Boolean(data?.signedUrl);
 }
 
 /** Best-effort delete of a clip original (used to roll back a failed insert). */
 export async function deleteClipOriginal(key: string): Promise<void> {
   const supabase = createServiceClient();
   await supabase.storage.from(CLIP_ORIGINALS_BUCKET).remove([key]);
-}
-
-/**
- * Upload a clip's low-quality preview to the public previews bucket; returns
- * the public URL to store in `clips.preview_url` (played directly by the card).
- */
-export async function uploadClipPreview(
-  clipId: string,
-  file: File,
-): Promise<string> {
-  const supabase = createServiceClient();
-  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
-  const key = `${clipId}.${ext}`;
-
-  const { error } = await supabase.storage
-    .from(CLIP_PREVIEWS_BUCKET)
-    .upload(key, file, {
-      contentType: file.type || "video/mp4",
-      upsert: true,
-    });
-
-  if (error) {
-    throw new Error(`Failed to upload preview file: ${error.message}`);
-  }
-
-  return supabase.storage.from(CLIP_PREVIEWS_BUCKET).getPublicUrl(key).data
-    .publicUrl;
 }
 
 /** Best-effort delete of a clip preview (used to roll back a failed insert). */
