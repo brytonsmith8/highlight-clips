@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/lib/admin/auth";
 import { createServiceClient } from "@/lib/supabase/service";
-import { deleteClipOriginal, uploadClipOriginal } from "@/lib/storage";
+import {
+  deleteClipOriginal,
+  deleteClipPreview,
+  uploadClipOriginal,
+  uploadClipPreview,
+} from "@/lib/storage";
 
 export async function createClip(formData: FormData) {
   await requireAdmin();
@@ -12,11 +17,14 @@ export async function createClip(formData: FormData) {
   const game_id = String(formData.get("game_id") ?? "").trim();
   const athleteId = String(formData.get("athlete_id") ?? "").trim();
   const priceRaw = String(formData.get("price") ?? "").trim();
-  const preview_url = String(formData.get("preview_url") ?? "").trim();
+  const previewFile = formData.get("preview_file");
   const originalFile = formData.get("original_file");
 
-  if (!game_id || !priceRaw || !preview_url) {
-    throw new Error("game_id, price, and preview_url are required.");
+  if (!game_id || !priceRaw) {
+    throw new Error("game_id and price are required.");
+  }
+  if (!(previewFile instanceof File) || previewFile.size === 0) {
+    throw new Error("A preview video file is required.");
   }
   if (!(originalFile instanceof File) || originalFile.size === 0) {
     throw new Error("An original video file is required.");
@@ -26,9 +34,10 @@ export async function createClip(formData: FormData) {
     throw new Error("price must be a non-negative number.");
   }
 
-  // Upload the original to the private bucket first; store its object key in full_url.
+  // Upload both files first, then insert the row.
   const clipId = crypto.randomUUID();
-  const objectKey = await uploadClipOriginal(clipId, originalFile);
+  const previewUrl = await uploadClipPreview(clipId, previewFile);
+  const originalKey = await uploadClipOriginal(clipId, originalFile);
 
   const supabase = createServiceClient();
   const { error } = await supabase.from("clips").insert({
@@ -36,13 +45,15 @@ export async function createClip(formData: FormData) {
     game_id,
     athlete_id: athleteId || null,
     price,
-    preview_url,
-    full_url: objectKey,
+    preview_url: previewUrl,
+    full_url: originalKey,
     published: false,
     created_at: new Date().toISOString(),
   });
   if (error) {
-    await deleteClipOriginal(objectKey); // roll back the orphaned upload
+    // roll back both orphaned uploads
+    await deleteClipPreview(`${clipId}.${previewFile.name.split(".").pop() || "mp4"}`);
+    await deleteClipOriginal(originalKey);
     throw new Error(error.message);
   }
 

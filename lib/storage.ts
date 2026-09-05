@@ -5,6 +5,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 /** Private bucket holding clip original (full-quality) files. */
 export const CLIP_ORIGINALS_BUCKET = "clip-originals";
 
+/** Public bucket holding low-quality preview files (meant to be watched freely). */
+export const CLIP_PREVIEWS_BUCKET = "clip-previews";
+
 /** How long a download signed-URL stays valid. */
 const SIGNED_URL_TTL_SECONDS = 60;
 
@@ -66,4 +69,37 @@ export async function uploadClipOriginal(
 export async function deleteClipOriginal(key: string): Promise<void> {
   const supabase = createServiceClient();
   await supabase.storage.from(CLIP_ORIGINALS_BUCKET).remove([key]);
+}
+
+/**
+ * Upload a clip's low-quality preview to the public previews bucket; returns
+ * the public URL to store in `clips.preview_url` (played directly by the card).
+ */
+export async function uploadClipPreview(
+  clipId: string,
+  file: File,
+): Promise<string> {
+  const supabase = createServiceClient();
+  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+  const key = `${clipId}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from(CLIP_PREVIEWS_BUCKET)
+    .upload(key, file, {
+      contentType: file.type || "video/mp4",
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(`Failed to upload preview file: ${error.message}`);
+  }
+
+  return supabase.storage.from(CLIP_PREVIEWS_BUCKET).getPublicUrl(key).data
+    .publicUrl;
+}
+
+/** Best-effort delete of a clip preview (used to roll back a failed insert). */
+export async function deleteClipPreview(key: string): Promise<void> {
+  const supabase = createServiceClient();
+  await supabase.storage.from(CLIP_PREVIEWS_BUCKET).remove([key]);
 }
