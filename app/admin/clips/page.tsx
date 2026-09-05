@@ -78,13 +78,16 @@ export default async function AdminClipsPage() {
           required
           className="w-full rounded border border-border px-3 py-2"
         />
-        <input
-          name="full_url"
-          type="url"
-          placeholder="Full/original URL (never shown publicly)"
-          required
-          className="w-full rounded border border-border px-3 py-2"
-        />
+        <label className="block text-sm text-muted">
+          Original video file (uploaded to private storage, never shown publicly)
+          <input
+            name="original_file"
+            type="file"
+            accept="video/mp4,video/quicktime"
+            required
+            className="mt-1 w-full rounded border border-border px-3 py-2 text-foreground"
+          />
+        </label>
         <button
           type="submit"
           className="rounded bg-accent px-3 py-2 font-medium text-white"

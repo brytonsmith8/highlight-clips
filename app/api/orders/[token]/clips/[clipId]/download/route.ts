@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getPurchaseForTokenAndClip, isDownloadExpired } from "@/lib/orders";
 import { createServiceClient } from "@/lib/supabase/service";
+import { resolveClipDownloadUrl } from "@/lib/storage";
 
 interface DownloadRouteParams {
   params: Promise<{ token: string; clipId: string }>;
@@ -41,5 +42,10 @@ export async function GET(_request: Request, { params }: DownloadRouteParams) {
     return NextResponse.json({ error: "Original file unavailable." }, { status: 404 });
   }
 
-  return NextResponse.redirect(clip.full_url);
+  const downloadUrl = await resolveClipDownloadUrl(clip.full_url);
+  if (!downloadUrl) {
+    return NextResponse.json({ error: "Original file unavailable." }, { status: 404 });
+  }
+
+  return NextResponse.redirect(downloadUrl);
 }
