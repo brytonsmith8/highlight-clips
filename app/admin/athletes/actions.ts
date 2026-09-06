@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/lib/admin/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  unlabelAndDeleteAthlete,
+  type MutationResult,
+} from "@/lib/admin/mutations";
 
 export async function createAthlete(formData: FormData) {
   await requireAdmin();
@@ -26,4 +30,21 @@ export async function createAthlete(formData: FormData) {
 
   revalidatePath("/admin/athletes");
   revalidatePath("/admin/clips");
+}
+
+/**
+ * Delete an athlete. Clips that referenced it are kept and unlabeled — see
+ * `unlabelAndDeleteAthlete`. Never blocked.
+ */
+export async function deleteAthleteAction(
+  formData: FormData,
+): Promise<MutationResult> {
+  await requireAdmin();
+  const athleteId = String(formData.get("athleteId") ?? "");
+  if (!athleteId) return { ok: false, message: "Missing athlete id." };
+
+  const result = await unlabelAndDeleteAthlete(athleteId);
+
+  if (result.ok) revalidatePath("/", "layout");
+  return result;
 }

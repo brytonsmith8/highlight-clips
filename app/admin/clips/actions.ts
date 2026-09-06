@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/lib/admin/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import { deleteClipCascade, type MutationResult } from "@/lib/admin/mutations";
 import {
   CLIP_ORIGINALS_BUCKET,
   CLIP_PREVIEWS_BUCKET,
@@ -92,4 +93,25 @@ export async function setClipPublished(clipId: string, published: boolean) {
   revalidatePath("/admin/clips");
   revalidatePath("/games");
   revalidatePath("/");
+}
+
+/**
+ * Delete a clip. `force` (a hidden field only rendered when the clip has
+ * purchases) also erases those purchase rows. Auth is enforced here; the
+ * cascade + storage cleanup + block-unless-forced logic lives in
+ * `deleteClipCascade`.
+ */
+export async function deleteClipAction(
+  formData: FormData,
+): Promise<MutationResult> {
+  await requireAdmin();
+  const clipId = String(formData.get("clipId") ?? "");
+  if (!clipId) return { ok: false, message: "Missing clip id." };
+
+  const result = await deleteClipCascade(clipId, {
+    force: formData.get("force") === "1",
+  });
+
+  if (result.ok) revalidatePath("/", "layout");
+  return result;
 }

@@ -26,27 +26,36 @@ export default async function AdminDashboard() {
         </form>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <Link
           href="/admin/games"
           className="rounded-lg border border-border p-4 transition-colors hover:border-accent"
         >
           <p className="font-semibold">Games</p>
-          <p className="text-sm text-muted">Add and view games</p>
+          <p className="text-sm text-muted">Add, view, and delete games</p>
         </Link>
         <Link
           href="/admin/athletes"
           className="rounded-lg border border-border p-4 transition-colors hover:border-accent"
         >
           <p className="font-semibold">Athletes</p>
-          <p className="text-sm text-muted">Add and view athletes</p>
+          <p className="text-sm text-muted">Add, view, and delete athletes</p>
         </Link>
         <Link
           href="/admin/clips"
           className="rounded-lg border border-border p-4 transition-colors hover:border-accent"
         >
           <p className="font-semibold">Clips</p>
-          <p className="text-sm text-muted">Add clips, publish/unpublish</p>
+          <p className="text-sm text-muted">Add, publish/unpublish, delete</p>
+        </Link>
+        <Link
+          href="/admin/orders"
+          className="rounded-lg border border-border p-4 transition-colors hover:border-accent"
+        >
+          <p className="font-semibold">Orders</p>
+          <p className="text-sm text-muted">
+            Resend link, extend window, delete
+          </p>
         </Link>
       </div>
     </div>

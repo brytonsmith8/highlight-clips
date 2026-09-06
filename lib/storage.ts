@@ -148,3 +148,55 @@ export async function deleteClipPreview(key: string): Promise<void> {
   const supabase = createServiceClient();
   await supabase.storage.from(CLIP_PREVIEWS_BUCKET).remove([key]);
 }
+
+/**
+ * The object key inside the public previews bucket for a stored `preview_url`,
+ * or null if the URL isn't one of ours (external / placeholder). Inverse of
+ * {@link clipPreviewPublicUrl}.
+ */
+export function clipPreviewObjectKeyFromUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+  const marker = `/storage/v1/object/public/${CLIP_PREVIEWS_BUCKET}/`;
+  const at = url.indexOf(marker);
+  if (at === -1) return null;
+  const key = url.slice(at + marker.length).split("?")[0];
+  return key || null;
+}
+
+/**
+ * Best-effort removal of a clip's stored files. Never throws — returns a short
+ * per-file status string for the caller to surface. External `http(s)` URLs
+ * (legacy / placeholder rows) are left alone.
+ */
+export async function removeClipFiles(clip: {
+  preview_url: string | null;
+  full_url: string | null;
+}): Promise<string> {
+  const supabase = createServiceClient();
+  const parts: string[] = [];
+
+  if (clip.full_url && !/^https?:\/\//i.test(clip.full_url)) {
+    const { error } = await supabase.storage
+      .from(CLIP_ORIGINALS_BUCKET)
+      .remove([clip.full_url]);
+    parts.push(error ? "original: FAILED" : "original: removed");
+    if (error) console.error("[storage] removeClipFiles original:", error.message);
+  } else {
+    parts.push("original: skipped (external)");
+  }
+
+  const previewKey = clipPreviewObjectKeyFromUrl(clip.preview_url);
+  if (previewKey) {
+    const { error } = await supabase.storage
+      .from(CLIP_PREVIEWS_BUCKET)
+      .remove([previewKey]);
+    parts.push(error ? "preview: FAILED" : "preview: removed");
+    if (error) console.error("[storage] removeClipFiles preview:", error.message);
+  } else {
+    parts.push("preview: skipped (external)");
+  }
+
+  return parts.join(", ");
+}

@@ -154,6 +154,64 @@ export async function getPurchasesForCheckout(
   return getPurchasesByToken(sessionId);
 }
 
+/**
+ * Re-send the confirmation email for an existing order. Reads only — it never
+ * touches the purchase rows or the payment flow, it just rebuilds the same
+ * message the webhook sends and hands it to Resend again.
+ */
+export async function resendOrderConfirmationEmail(
+  token: string,
+): Promise<{ ok: boolean; message: string }> {
+  const purchases = await getPurchasesByToken(token);
+  if (purchases.length === 0) {
+    return { ok: false, message: "No purchase records found for that order." };
+  }
+
+  const supabase = createServiceClient();
+  const clipIds = Array.from(new Set(purchases.map((p) => p.clip_id)));
+  const { data: clips } = await supabase
+    .from("clips")
+    .select("id, price, game_id")
+    .in("id", clipIds);
+  const clipById = new Map((clips ?? []).map((c) => [c.id, c]));
+
+  const gameIds = Array.from(
+    new Set((clips ?? []).map((c) => c.game_id).filter(Boolean)),
+  );
+  const { data: games } =
+    gameIds.length > 0
+      ? await supabase
+          .from("games")
+          .select("id, school_a, school_b")
+          .in("id", gameIds)
+      : { data: [] as { id: string; school_a: string; school_b: string }[] };
+  const gameById = new Map((games ?? []).map((g) => [g.id, g]));
+
+  try {
+    await sendOrderConfirmationEmail({
+      to: purchases[0].buyer_email,
+      token,
+      clips: purchases.map((p) => {
+        const clip = clipById.get(p.clip_id);
+        const game = clip ? gameById.get(clip.game_id) : undefined;
+        return {
+          schoolA: game?.school_a ?? "Unknown",
+          schoolB: game?.school_b ?? "Unknown",
+          priceDollars: clip?.price ?? 0,
+        };
+      }),
+      expiresAt: computeDownloadExpiry(purchases[0].purchased_at),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: `Email send failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    };
+  }
+
+  return { ok: true, message: `Sent to ${purchases[0].buyer_email}.` };
+}
+
 /** A single purchased clip within a token, verified to belong to that token. */
 export async function getPurchaseForTokenAndClip(
   token: string,
