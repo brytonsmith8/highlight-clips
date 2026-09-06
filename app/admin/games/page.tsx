@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { requireAdminOrRedirect } from "@/lib/admin/auth";
 import { adminListGames } from "@/lib/admin/queries";
@@ -52,14 +53,18 @@ export default async function AdminGamesPage() {
       <div className="mt-6 space-y-2">
         {games.length === 0 && <p className="text-muted">No games yet.</p>}
         {games.map((game) => (
-          <div key={game.id} className="rounded-lg border border-border p-3">
+          <Link
+            key={game.id}
+            href={`/admin/games/${game.id}`}
+            className="block rounded-lg border border-border p-3 transition-colors hover:border-accent"
+          >
             <p className="font-medium">
               {game.school_a} vs {game.school_b}
             </p>
             <p className="text-sm text-muted">
               {formatGameDate(game.game_date)} &middot; {game.id}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

@@ -55,3 +55,29 @@ export async function adminListClips(): Promise<AdminClip[]> {
   if (error) throw new Error(error.message);
   return (data ?? []) as AdminClip[];
 }
+
+export async function adminGetGame(id: string): Promise<Game | null> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("games")
+    .select("id, school_a, school_b, game_date, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Game | null) ?? null;
+}
+
+export async function adminListClipsForGame(
+  gameId: string,
+): Promise<AdminClip[]> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("clips")
+    .select(
+      "id, price, game_id, athlete_id, preview_url, full_url, published, created_at",
+    )
+    .eq("game_id", gameId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AdminClip[];
+}
