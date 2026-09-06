@@ -97,6 +97,43 @@ export const getClipsForGame = cache(
   },
 );
 
+/** A single *published* clip by id, with its athlete joined in application code
+ * (same reason as `getClipsForGame` — no registered FK for a PostgREST embed).
+ * Returns null for a missing or unpublished clip. `full_url` is never selected. */
+export const getClipById = cache(
+  async (clipId: string): Promise<ClipWithAthlete | null> => {
+    const supabase = await createClient();
+
+    const { data: clip, error } = await supabase
+      .from("clips")
+      .select("id, price, game_id, athlete_id, preview_url, published, created_at")
+      .eq("id", clipId)
+      .eq("published", true)
+      .maybeSingle();
+    if (error) {
+      console.error("[queries] getClipById:", error.message);
+      return null;
+    }
+    if (!clip) return null;
+
+    let athlete: Athlete | null = null;
+    if (clip.athlete_id) {
+      const { data, error: athleteError } = await supabase
+        .from("athletes")
+        .select("id, name, jersey_number, created_at")
+        .eq("id", clip.athlete_id)
+        .maybeSingle();
+      if (athleteError) {
+        console.error("[queries] getClipById (athlete):", athleteError.message);
+      } else {
+        athlete = (data as Athlete | null) ?? null;
+      }
+    }
+
+    return { ...(clip as Clip), athlete };
+  },
+);
+
 /** Distinct athletes who have at least one *published* clip in this game — used for the filter pills. */
 export const getAthletesForGame = cache(async (gameId: string): Promise<Athlete[]> => {
   const supabase = await createClient();
