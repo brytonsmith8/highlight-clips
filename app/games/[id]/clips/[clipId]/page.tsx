@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { getClipById, getGameById } from "@/lib/queries";
 import { formatGameDate, formatPrice } from "@/lib/format";
+import { isPlayablePreviewUrl } from "@/lib/preview";
 import { BuyButton } from "@/components/buy-button";
 
 interface ClipPageProps {
@@ -54,7 +55,7 @@ export default async function ClipPage({ params }: ClipPageProps) {
       </p>
 
       <div className="mt-6">
-        {clip.preview_url ? (
+        {isPlayablePreviewUrl(clip.preview_url) ? (
           <video
             src={clip.preview_url}
             controls
