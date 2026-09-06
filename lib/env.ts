@@ -38,12 +38,40 @@ export const publicEnv = {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     );
   },
-  /** Absolute origin of this deployment, no trailing slash. Falls back to localhost. */
+  /**
+   * Absolute origin of this deployment, no trailing slash — used server-side to
+   * build absolute URLs (Stripe `success_url`/`cancel_url`, order links in
+   * email, `metadataBase`).
+   *
+   * Resolution order:
+   *   1. `NEXT_PUBLIC_SITE_URL` — explicit override / canonical custom domain.
+   *   2. `VERCEL_PROJECT_PRODUCTION_URL` on a production deployment — the stable
+   *      production alias (e.g. `highlight-clips.vercel.app`), so the checkout
+   *      return URL is always the real site even before this var is configured.
+   *   3. `VERCEL_URL` — the per-deployment URL (covers preview deployments).
+   *   4. `http://localhost:3000` — local dev only.
+   *
+   * The `VERCEL_*` vars are not `NEXT_PUBLIC_`, so steps 2–3 only resolve on the
+   * server. Every current caller is server-side; a browser caller would need
+   * `NEXT_PUBLIC_SITE_URL` set.
+   */
   get siteUrl(): string {
-    return (
-      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-      "http://localhost:3000"
-    );
+    const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    if (explicit) return explicit.replace(/\/$/, "");
+
+    const productionDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+    if (process.env.VERCEL_ENV === "production" && productionDomain) {
+      return `https://${productionDomain.replace(/\/$/, "")}`;
+    }
+
+    const deploymentDomain = process.env.VERCEL_URL?.trim();
+    if (deploymentDomain) return `https://${deploymentDomain.replace(/\/$/, "")}`;
+
+    if (productionDomain) {
+      return `https://${productionDomain.replace(/\/$/, "")}`;
+    }
+
+    return "http://localhost:3000";
   },
 };
 
