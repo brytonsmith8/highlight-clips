@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { computeDownloadExpiry, getPurchasesByToken, isDownloadExpired } from "@/lib/orders";
+import {
+  computeDownloadExpiry,
+  getPurchasesForCheckout,
+  isDownloadExpired,
+} from "@/lib/orders";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formatGameDate, formatPrice } from "@/lib/format";
 import { Countdown } from "@/components/countdown";
@@ -11,6 +15,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Never cache: this page verifies (and may record) the purchase on each load,
+// right after the Stripe redirect.
+export const dynamic = "force-dynamic";
+
 interface OrderPageProps {
   params: Promise<{ token: string }>;
 }
@@ -18,8 +26,13 @@ interface OrderPageProps {
 export default async function OrderPage({ params }: OrderPageProps) {
   const { token } = await params;
 
-  const purchases = await getPurchasesByToken(token);
-  if (purchases.length === 0) notFound();
+  const allPurchases = await getPurchasesForCheckout(token);
+  if (allPurchases.length === 0) notFound();
+
+  // One row per clip (guards against a webhook + self-heal double-insert race).
+  const purchases = Array.from(
+    new Map(allPurchases.map((p) => [p.clip_id, p])).values(),
+  );
 
   const supabase = createServiceClient();
   const clipIds = purchases.map((p) => p.clip_id);
