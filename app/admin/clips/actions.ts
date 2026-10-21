@@ -79,7 +79,7 @@ export async function finalizeClip(input: {
       : "The preview file is not a valid MP4.") ??
     (size && size.height <= PREVIEW_MAX_HEIGHT
       ? null
-      : "The preview must be 480p or smaller.") ??
+      : "The preview must be a small, low-quality video (320 pixels tall or less).") ??
     (facts?.hasH264 && facts.hasAac
       ? null
       : "The preview must be H.264 video with AAC audio.") ??

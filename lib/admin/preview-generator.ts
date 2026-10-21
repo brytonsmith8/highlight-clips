@@ -5,8 +5,12 @@
  *   1. Warm up: play the original briefly, pause, rewind to 0.
  *   2. Play again and WAIT until a picture has actually been shown.
  *   3. Only then start the browser's MediaRecorder, so the file has no lead-in.
- * Every frame is drawn onto a 480p canvas with the BRYT VISION mark centered
- * at 35% strength, and the original's sound is recorded with it.
+ * The public preview is deliberately very low quality so nobody uses it instead of
+ * buying: every frame is shrunk to about 144 x 256 (256 x 144 for landscape) at
+ * about 12 frames per second, then pixelated into 4-pixel blocks so colors, movement
+ * and the general outline survive but faces and fine detail do not. The BRYT VISION
+ * mark is drawn crisp on top, centered, and the original's sound is recorded with it.
+ * The original file is never changed.
  *
  * MP4 (H.264 + AAC) only. If the browser cannot record that, we stop with a
  * clear message; we never upload WebM or rename a file.
@@ -21,12 +25,21 @@ const WATERMARK_PATH = "/brand/bryt-vision-logo.png";
 
 /** Keep in step with PREVIEW_MAX_BYTES in lib/storage.ts (the server enforces it too). */
 export const PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
-export const PREVIEW_HEIGHT = 480;
+/** Shorter side of the degraded preview: 144 x 256 portrait, 256 x 144 landscape. */
+export const PREVIEW_SHORT_SIDE = 144;
+/** The longer side never exceeds this (keep in step with PREVIEW_MAX_HEIGHT in lib/storage.ts). */
+export const PREVIEW_LONG_SIDE_MAX = 320;
+export const PREVIEW_FPS = 12;
+/** The picture is reduced to blocks this many pixels wide, then enlarged without smoothing. */
+const PIXEL_BLOCK = 4;
+/** Real-time recording is the slow part, so cap the clip length. */
+const MAX_RECORD_SECONDS = 300;
 
-const VIDEO_BITS_PER_SECOND = 1_100_000;
-const AUDIO_BITS_PER_SECOND = 96_000;
-const WATERMARK_WIDTH = 200;
-const WATERMARK_OPACITY = 0.35;
+const VIDEO_BITS_PER_SECOND = 120_000;
+const AUDIO_BITS_PER_SECOND = 64_000;
+/** The mark is this fraction of the picture's shorter side. */
+const WATERMARK_FRACTION = 0.7;
+const WATERMARK_OPACITY = 0.5;
 /** Plan to use at most 90% of the 25 MiB limit; real encoders overshoot their target a little. */
 const SIZE_SAFETY = 0.9;
 /** No new picture for this long means playback is stuck. */
@@ -35,7 +48,7 @@ const STALL_MS = 8000;
 const DURATION_TOLERANCE_S = 1.0;
 const TRACK_START_TOLERANCE_S = 0.3;
 /** Fewer pictures per second than this means the browser throttled the page (covered window, hidden pane). */
-const MIN_FRAMES_PER_SECOND = 15;
+const MIN_FRAMES_PER_SECOND = 9;
 
 /** Only H.264 + AAC in MP4 is accepted. Plain "video/mp4" is NOT used: it can contain VP9/Opus. */
 const MP4_RECORDER_TYPES = [
@@ -70,8 +83,9 @@ export function pickMp4RecorderType(): string | null {
 
 /** Longest original (seconds) whose preview is expected to fit the 25 MiB limit. */
 export function maxPreviewSeconds(): number {
-  return Math.floor(
-    (PREVIEW_MAX_BYTES * SIZE_SAFETY * 8) / (VIDEO_BITS_PER_SECOND + AUDIO_BITS_PER_SECOND),
+  return Math.min(
+    MAX_RECORD_SECONDS,
+    Math.floor((PREVIEW_MAX_BYTES * SIZE_SAFETY * 8) / (VIDEO_BITS_PER_SECOND + AUDIO_BITS_PER_SECOND)),
   );
 }
 
@@ -233,16 +247,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** The brand file is white lettering on an opaque black square; make black see-through. */
-async function makeWatermark(): Promise<HTMLCanvasElement> {
+async function makeWatermark(markWidth: number): Promise<HTMLCanvasElement> {
   const image = await loadImage(WATERMARK_PATH);
-  const height = Math.round((WATERMARK_WIDTH * image.naturalHeight) / image.naturalWidth);
+  const height = Math.round((markWidth * image.naturalHeight) / image.naturalWidth);
   const canvas = document.createElement("canvas");
-  canvas.width = WATERMARK_WIDTH;
+  canvas.width = markWidth;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("This browser cannot draw the preview.");
-  ctx.drawImage(image, 0, 0, WATERMARK_WIDTH, height);
-  const pixels = ctx.getImageData(0, 0, WATERMARK_WIDTH, height);
+  ctx.drawImage(image, 0, 0, markWidth, height);
+  const pixels = ctx.getImageData(0, 0, markWidth, height);
   const data = pixels.data;
   for (let i = 0; i < data.length; i += 4) {
     const strength = Math.max(data[i], data[i + 1], data[i + 2]);
@@ -360,25 +374,55 @@ export async function generateWatermarkedPreview(
       );
     }
 
-    const height = PREVIEW_HEIGHT;
-    const width = Math.max(2, Math.round((video.videoWidth * height) / video.videoHeight / 2) * 2);
-    const watermark = await guard(makeWatermark());
+    // Size: shorter side 144, longer side keeps the original shape (never above 320), both even.
+    const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+    const landscape = video.videoWidth >= video.videoHeight;
+    let width = landscape ? even((PREVIEW_SHORT_SIDE * video.videoWidth) / video.videoHeight) : PREVIEW_SHORT_SIDE;
+    let height = landscape ? PREVIEW_SHORT_SIDE : even((PREVIEW_SHORT_SIDE * video.videoHeight) / video.videoWidth);
+    const longest = Math.max(width, height);
+    if (longest > PREVIEW_LONG_SIDE_MAX) {
+      const shrink = PREVIEW_LONG_SIDE_MAX / longest;
+      width = even(width * shrink);
+      height = even(height * shrink);
+    }
+    const watermark = await guard(makeWatermark(Math.round(Math.min(width, height) * WATERMARK_FRACTION)));
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("This browser cannot draw the preview.");
-    ctx.imageSmoothingQuality = "high";
-    const drawFrame = () => {
-      ctx.globalAlpha = 1;
-      ctx.drawImage(video, 0, 0, width, height);
-      ctx.globalAlpha = WATERMARK_OPACITY;
-      ctx.drawImage(watermark, (width - watermark.width) / 2, (height - watermark.height) / 2);
-      ctx.globalAlpha = 1;
+
+    // The degrading step, shared by recording and by the checks below so both see the same thing:
+    // shrink in two steps (so every source pixel counts toward the average), end at blocks that are
+    // PIXEL_BLOCK wide, enlarge WITHOUT smoothing (hard squares), then draw the mark crisp on top.
+    const stageCanvas = document.createElement("canvas");
+    stageCanvas.width = width * 2;
+    stageCanvas.height = height * 2;
+    const stageCtx = stageCanvas.getContext("2d");
+    const blockCanvas = document.createElement("canvas");
+    blockCanvas.width = Math.max(4, Math.round(width / PIXEL_BLOCK));
+    blockCanvas.height = Math.max(4, Math.round(height / PIXEL_BLOCK));
+    const blockCtx = blockCanvas.getContext("2d");
+    if (!stageCtx || !blockCtx) throw new Error("This browser cannot draw the preview.");
+    stageCtx.imageSmoothingQuality = "high";
+    blockCtx.imageSmoothingQuality = "high";
+    const renderDegraded = (target: CanvasRenderingContext2D, source: CanvasImageSource, withMark: boolean) => {
+      stageCtx.drawImage(source, 0, 0, stageCanvas.width, stageCanvas.height);
+      blockCtx.drawImage(stageCanvas, 0, 0, blockCanvas.width, blockCanvas.height);
+      target.globalAlpha = 1;
+      target.imageSmoothingEnabled = false;
+      target.drawImage(blockCanvas, 0, 0, width, height);
+      if (withMark) {
+        target.imageSmoothingEnabled = true;
+        target.globalAlpha = WATERMARK_OPACITY;
+        target.drawImage(watermark, (width - watermark.width) / 2, (height - watermark.height) / 2);
+        target.globalAlpha = 1;
+      }
     };
+    const drawFrame = () => renderDegraded(ctx, video, true);
 
     await guard(audioContext.resume().catch(() => undefined));
-    stream = canvas.captureStream(30);
+    stream = canvas.captureStream(PREVIEW_FPS);
     soundDestination.stream.getAudioTracks().forEach((track) => stream?.addTrack(track));
     recorder = new MediaRecorder(stream, {
       mimeType,
@@ -464,10 +508,17 @@ export async function generateWatermarkedPreview(
     recorder.start();
 
     let framesDrawn = 0;
+    // Draw about PREVIEW_FPS pictures per second, paced by the video's own clock (not the screen's).
+    let nextDrawAt = 0;
     const step = () => {
       if (video.ended || recorder?.state !== "recording") return;
-      drawFrame();
-      framesDrawn++;
+      const now = video.currentTime;
+      if (now + 0.001 >= nextDrawAt) {
+        drawFrame();
+        framesDrawn++;
+        nextDrawAt += 1 / PREVIEW_FPS;
+        if (nextDrawAt < now) nextDrawAt = now + 1 / PREVIEW_FPS;
+      }
       onStatus(`Recording preview… ${Math.round((video.currentTime / duration) * 100)}% (keep this tab open; Cancel stops it)`);
       if ("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(step);
       else requestAnimationFrame(step);
@@ -515,8 +566,8 @@ export async function generateWatermarkedPreview(
     }
     checks.push(`Smooth: ${framesPerSecond.toFixed(0)} pictures per second`);
 
-    if (facts.height !== PREVIEW_HEIGHT) {
-      throw new Error(`The file header says ${facts.height ?? "unknown"} pixels tall, not ${PREVIEW_HEIGHT}.`);
+    if (facts.height !== height) {
+      throw new Error(`The file header says ${facts.height ?? "unknown"} pixels tall, not ${height}.`);
     }
     for (const start of [facts.videoStart, facts.audioStart]) {
       if (start !== null && start > TRACK_START_TOLERANCE_S) {
@@ -535,10 +586,10 @@ export async function generateWatermarkedPreview(
     preview.src = previewUrl;
     preview.load();
     await guard(waitForMetadata(preview));
-    if (preview.videoHeight !== PREVIEW_HEIGHT) {
-      throw new Error(`The player sees ${preview.videoWidth}×${preview.videoHeight}, not ${PREVIEW_HEIGHT}p.`);
+    if (preview.videoHeight !== height || preview.videoWidth !== width) {
+      throw new Error(`The player sees ${preview.videoWidth}×${preview.videoHeight}, not ${width}×${height}.`);
     }
-    checks.push(`Resolution ${preview.videoWidth}×${preview.videoHeight} (480p)`);
+    checks.push(`Resolution ${preview.videoWidth}×${preview.videoHeight} (deliberately very low quality)`);
     if (!isFinite(preview.duration)) {
       throw new Error("The preview has no readable length, so seeking would not work. It was not kept.");
     }
@@ -555,7 +606,7 @@ export async function generateWatermarkedPreview(
     probe.height = 18;
     const probeCtx = probe.getContext("2d", { willReadFrequently: true });
     if (!probeCtx) throw new Error("This browser cannot check the preview.");
-    const gray = (source: HTMLVideoElement) => {
+    const gray = (source: CanvasImageSource) => {
       probeCtx.drawImage(source, 0, 0, 32, 18);
       const data = probeCtx.getImageData(0, 0, 32, 18).data;
       const out: number[] = [];
@@ -574,8 +625,15 @@ export async function generateWatermarkedPreview(
       if (!shownOriginal.seeked) continue;
       // If the browser could not confirm which picture was on screen, a comparison would be unreliable: skip it.
       if (shownPreview.confirmed !== shownOriginal.confirmed) continue;
+      // Compare with what the ORIGINAL looks like after the same degrading and mark.
+      const expectedCanvas = document.createElement("canvas");
+      expectedCanvas.width = width;
+      expectedCanvas.height = height;
+      const expectedCtx = expectedCanvas.getContext("2d", { alpha: false });
+      if (!expectedCtx) continue;
+      renderDegraded(expectedCtx, checker, true);
       const a = gray(preview);
-      const b = gray(checker);
+      const b = gray(expectedCanvas);
       let diff = 0;
       for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
       compared++;
@@ -602,11 +660,9 @@ export async function generateWatermarkedPreview(
       const gotCtx = makeCtx();
       gotCtx.drawImage(preview, 0, 0, width, height);
       const plainCtx = makeCtx();
-      plainCtx.drawImage(checker, 0, 0, width, height);
+      renderDegraded(plainCtx, checker, false);
       const withCtx = makeCtx();
-      withCtx.drawImage(checker, 0, 0, width, height);
-      withCtx.globalAlpha = WATERMARK_OPACITY;
-      withCtx.drawImage(watermark, (width - watermark.width) / 2, (height - watermark.height) / 2);
+      renderDegraded(withCtx, checker, true);
       const x = Math.round((width - watermark.width) / 2);
       const y = Math.round((height - watermark.height) / 2);
       const region = (c: CanvasRenderingContext2D) => c.getImageData(x, y, watermark.width, watermark.height).data;
@@ -638,7 +694,7 @@ export async function generateWatermarkedPreview(
       warnings.push("Could not decode the sound to check it. Play the preview and listen before approving.");
     }
 
-    return { blob, width, height: PREVIEW_HEIGHT, durationSeconds: duration, checks, warnings };
+    return { blob, width, height, durationSeconds: duration, checks, warnings };
   } finally {
     if (watchdog) clearInterval(watchdog);
     stopWatching?.();

@@ -20,7 +20,7 @@ export interface ClipFormOption {
 
 /**
  * New-clip form. The admin picks ONLY the original video; the browser records
- * the watermarked 480p preview from it. Both files then upload directly from
+ * the watermarked, deliberately blurry low-quality preview from it. Both files then upload directly from
  * the browser to Supabase Storage (signed upload URLs) so the bytes never hit
  * a serverless function. Only small JSON goes through the Server Actions
  * (`startClipUpload`, then `finalizeClip`, which re-checks the preview).
@@ -205,7 +205,7 @@ export function NewClipForm({
         className="w-full rounded border border-border px-3 py-2"
       />
       <label className="block text-sm text-muted">
-        Original video file (kept private). A low-quality, watermarked preview is recorded from it automatically. This takes as long as the clip plays (up to {maxPreviewSeconds()} seconds), so keep this tab open and in front.
+        Original video file (kept private). A tiny, pixelated, watermarked preview (about 144 × 256, 12 frames per second) is recorded from it automatically. This takes as long as the clip plays (up to {maxPreviewSeconds()} seconds), so keep this tab open and in front.
         <input
           name="original_file"
           type="file"
@@ -250,8 +250,9 @@ export function NewClipForm({
             </p>
           ))}
           <p className="text-sm text-muted">
-            Confirm the logo is visible in the middle and the audio plays. This
-            exact file will be public.
+            This is the exact file the public will see. It should look very
+            small, blurry and blocky, with the logo visible in the middle and the
+            audio playing.
           </p>
           <div className="flex gap-2">
             <button
