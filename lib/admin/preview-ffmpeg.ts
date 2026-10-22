@@ -19,7 +19,7 @@ export const PREVIEW_SHORT_SIDE = 352;
 export const PREVIEW_LONG_SIDE_MAX = 640;
 export const PREVIEW_FPS = 12;
 /** Gaussian blur strength in pixels at a 352 px short side. Larger = blurrier. */
-export const PREVIEW_BLUR_SIGMA = 6;
+export const PREVIEW_BLUR_SIGMA = 4;
 /** Mark width as a fraction of the short side, and its opacity. */
 export const WATERMARK_FRACTION = 0.7;
 export const WATERMARK_OPACITY = 0.5;
@@ -80,8 +80,8 @@ export function buildPreviewArgs({ inputPath, logoPath, outputPath, hasAudio, in
   args.push("-filter_complex", buildFilterGraph(), "-map", "[v]", "-map", hasAudio ? "0:a:0" : "2:a:0");
   args.push(
     "-t", String(PREVIEW_MAX_SECONDS),
-    "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "main", "-level", "3.1",
-    "-crf", "26", "-maxrate", "500k", "-bufsize", "1000k", "-g", String(PREVIEW_FPS * 2), "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "faster", "-profile:v", "high", "-level", "3.1",
+    "-crf", "22", "-maxrate", "600k", "-bufsize", "1200k", "-g", String(PREVIEW_FPS * 2), "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "44100", "-ac", "2",
     "-movflags", "+faststart",
     outputPath,
