@@ -154,6 +154,17 @@ export async function setClipPublished(clipId: string, published: boolean) {
   await requireAdmin();
 
   const supabase = createServiceClient();
+  if (published) {
+    // A clip whose original was cleaned up after its last sale must not go back on sale.
+    const { data: clip } = await supabase
+      .from("clips")
+      .select("full_url")
+      .eq("id", clipId)
+      .maybeSingle();
+    if (!clip?.full_url) {
+      throw new Error("This clip's original video has been removed, so it can't be published again.");
+    }
+  }
   const { error } = await supabase
     .from("clips")
     .update({ published })
