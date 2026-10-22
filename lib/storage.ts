@@ -188,8 +188,8 @@ export async function previewMp4Facts(path: string): Promise<Mp4Facts | null> {
   }
 }
 
-/** Tallest video a public preview may be: previews are deliberately tiny (144 x 256 portrait). */
-export const PREVIEW_MAX_HEIGHT = 320;
+/** Tallest video a public preview may be: previews are deliberately small and blurred (360 x 640 portrait). */
+export const PREVIEW_MAX_HEIGHT = 720;
 
 /**
  * Reads the video track's pixel size from the MP4 header ("tkhd" boxes) in the

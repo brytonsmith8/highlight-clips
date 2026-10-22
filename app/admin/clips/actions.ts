@@ -79,7 +79,7 @@ export async function finalizeClip(input: {
       : "The preview file is not a valid MP4.") ??
     (size && size.height <= PREVIEW_MAX_HEIGHT
       ? null
-      : "The preview must be a small, low-quality video (320 pixels tall or less).") ??
+      : "The preview must be a small, blurred video (720 pixels tall or less).") ??
     (facts?.hasH264 && facts.hasAac
       ? null
       : "The preview must be H.264 video with AAC audio.") ??
@@ -113,6 +113,40 @@ export async function finalizeClip(input: {
   }
 
   revalidatePath("/admin/clips");
+}
+
+/**
+ * Remove the files of a clip upload that was never saved (admin pressed Discard, or the preview step failed).
+ * Safety: it only touches the two paths derived from `clipId`, and refuses outright if a clip row with that id
+ * exists, so it can never delete a saved clip's original or preview.
+ */
+export async function discardClipUpload(input: {
+  clipId: string;
+  originalPath: string;
+  previewPath: string;
+}) {
+  await requireAdmin();
+  const { clipId, originalPath, previewPath } = input;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (
+    !uuid.test(clipId) ||
+    previewPath !== `${clipId}.mp4` ||
+    !new RegExp(`^${clipId}\\.(mp4|mov|m4v)$`, "i").test(originalPath)
+  ) {
+    throw new Error("Unexpected upload paths.");
+  }
+
+  const supabase = createServiceClient();
+  const { data: existing, error } = await supabase
+    .from("clips")
+    .select("id")
+    .eq("id", clipId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (existing) throw new Error("That clip is already saved, so its files were not removed.");
+
+  await deleteClipPreview(previewPath);
+  await deleteClipOriginal(originalPath);
 }
 
 /** Bound to a specific clip id + target value via .bind() in the page. */
