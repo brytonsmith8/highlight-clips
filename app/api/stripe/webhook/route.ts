@@ -40,11 +40,21 @@ export async function POST(request: Request) {
     );
   }
 
-  if (event.type !== "checkout.session.completed") {
+  if (
+    event.type !== "checkout.session.completed" &&
+    event.type !== "checkout.session.async_payment_succeeded"
+  ) {
     return NextResponse.json({ received: true });
   }
 
   const session = event.data.object as Stripe.Checkout.Session;
+  // A completed Checkout is not always a paid one (delayed payment methods). Only grant
+  // download access once the money has actually been received; a delayed payment is
+  // recorded later by the async_payment_succeeded event.
+  if (session.payment_status !== "paid") {
+    return NextResponse.json({ received: true });
+  }
+
   const clipId = session.metadata?.clip_id;
   const buyerEmail = session.customer_details?.email ?? session.customer_email;
 

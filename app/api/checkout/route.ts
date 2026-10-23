@@ -26,14 +26,14 @@ export async function POST(request: Request) {
 
   const { data: clip, error: clipError } = await supabase
     .from("clips")
-    .select("id, price, game_id, published")
+    .select("id, price, game_id, published, full_url")
     .eq("id", clipId)
     .maybeSingle();
 
   if (clipError) {
     return NextResponse.json({ error: clipError.message }, { status: 500 });
   }
-  if (!clip || !clip.published) {
+  if (!clip || !clip.published || !clip.full_url) {
     return NextResponse.json(
       { error: "This clip is not available for purchase." },
       { status: 404 },

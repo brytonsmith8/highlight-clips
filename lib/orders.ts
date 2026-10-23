@@ -19,6 +19,13 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 
 export const DOWNLOAD_WINDOW_HOURS = 72;
 
+/**
+ * Self-healing (below) exists only to cover the few seconds between Stripe sending the buyer
+ * back and the webhook landing. It must not bring back an order the admin deleted, so it only
+ * applies to a Checkout Session created in the last 30 minutes.
+ */
+const SELF_HEAL_MAX_AGE_SECONDS = 30 * 60;
+
 export interface PurchaseRow {
   id: string;
   clip_id: string;
@@ -85,6 +92,7 @@ export async function getPurchasesForCheckout(
   }
 
   if (session.payment_status !== "paid") return [];
+  if (Date.now() / 1000 - session.created > SELF_HEAL_MAX_AGE_SECONDS) return [];
 
   const clipId = session.metadata?.clip_id;
   const buyerEmail =
