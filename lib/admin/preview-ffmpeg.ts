@@ -2,6 +2,8 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 
+import { PREVIEW_MARK } from "@/lib/preview-mark";
+
 /**
  * Server-side preview generation with FFmpeg.
  *
@@ -84,6 +86,8 @@ export function buildPreviewArgs({ inputPath, logoPath, outputPath, hasAudio, in
     "-crf", "22", "-maxrate", "600k", "-bufsize", "1200k", "-g", String(PREVIEW_FPS * 2), "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "44100", "-ac", "2",
     "-movflags", "+faststart",
+    // Proof that this file came from this pipeline (blur + watermark); saving/publishing checks for it.
+    "-metadata", `comment=${PREVIEW_MARK}`,
     outputPath,
   );
   return args;
