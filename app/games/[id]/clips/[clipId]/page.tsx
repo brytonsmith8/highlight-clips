@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { getClipById, getGameById } from "@/lib/queries";
 import { formatGameDate, formatPrice } from "@/lib/format";
-import { isPlayablePreviewUrl } from "@/lib/preview";
+import { checkPreviewPublic } from "@/lib/preview-gate";
 import { BuyButton } from "@/components/buy-button";
 
 interface ClipPageProps {
@@ -29,6 +29,8 @@ export default async function ClipPage({ params }: ClipPageProps) {
 
   const game = await getGameById(id);
   if (!game) notFound();
+
+  const showPreview = await checkPreviewPublic(clip.preview_url);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -55,7 +57,7 @@ export default async function ClipPage({ params }: ClipPageProps) {
       </p>
 
       <div className="mt-6">
-        {isPlayablePreviewUrl(clip.preview_url) ? (
+        {showPreview && clip.preview_url ? (
           <video
             src={clip.preview_url}
             controls
@@ -65,14 +67,16 @@ export default async function ClipPage({ params }: ClipPageProps) {
           />
         ) : (
           <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-border bg-zinc-50 text-sm text-muted">
-            Preview unavailable
+            Preview being prepared
           </div>
         )}
       </div>
 
       <p className="mt-4 text-lg font-semibold">{formatPrice(clip.price)}</p>
       <p className="mt-1 text-sm text-muted">
-        Preview quality shown above. Purchase to download the full-quality clip.
+        {showPreview
+          ? "Preview quality shown above. Purchase to download the full-quality clip."
+          : "The protected preview for this clip is being prepared. Purchase to download the full-quality clip."}
       </p>
 
       <div className="mt-3 max-w-xs">
