@@ -2,6 +2,8 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 
+import { PREVIEW_MARK } from "@/lib/preview-mark";
+
 /**
  * Server-side preview generation with FFmpeg.
  *
@@ -10,16 +12,16 @@ import { spawn } from "node:child_process";
  * encoder behaves the same everywhere, so the public preview is made here instead, from a copy of the
  * original that is read-only to this code. The original file is never modified.
  *
- * The preview is: ~352 px on the short side (sizes are multiples of 16), 12 frames per second, a smooth
+ * The preview is: ~320 px on the short side (sizes are multiples of 16), 12 frames per second, a smooth
  * Gaussian blur applied at that size, the BRYT VISION mark centered and crisp at 50% opacity AFTER the
  * blur, H.264 video + AAC audio in an MP4 with the index at the front (so seeking and streaming work).
  */
 
-export const PREVIEW_SHORT_SIDE = 352;
+export const PREVIEW_SHORT_SIDE = 320;
 export const PREVIEW_LONG_SIDE_MAX = 640;
 export const PREVIEW_FPS = 12;
-/** Gaussian blur strength in pixels at a 352 px short side. Larger = blurrier. */
-export const PREVIEW_BLUR_SIGMA = 4;
+/** Gaussian blur strength in pixels at a 320 px short side. Larger = blurrier. */
+export const PREVIEW_BLUR_SIGMA = 3;
 /** Mark width as a fraction of the short side, and its opacity. */
 export const WATERMARK_FRACTION = 0.7;
 export const WATERMARK_OPACITY = 0.5;
@@ -84,6 +86,8 @@ export function buildPreviewArgs({ inputPath, logoPath, outputPath, hasAudio, in
     "-crf", "22", "-maxrate", "600k", "-bufsize", "1200k", "-g", String(PREVIEW_FPS * 2), "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", AUDIO_BITRATE, "-ar", "44100", "-ac", "2",
     "-movflags", "+faststart",
+    // Proof that this file came from this pipeline (blur + watermark); saving/publishing checks for it.
+    "-metadata", `comment=${PREVIEW_MARK}`,
     outputPath,
   );
   return args;

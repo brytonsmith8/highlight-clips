@@ -10,12 +10,14 @@ import {
   CLIP_PREVIEWS_BUCKET,
   checkPreviewAgainstOriginal,
   clipObjectInfo,
+  clipPreviewObjectKeyFromUrl,
   clipPreviewPublicUrl,
   createClipUploadUrls,
   deleteClipOriginal,
   deleteClipPreview,
   PREVIEW_MAX_HEIGHT,
   previewLooksLikeMp4,
+  previewHasProtectionMark,
   previewMp4Facts,
   previewVideoSize,
   type ClipUploadUrls,
@@ -80,6 +82,9 @@ export async function finalizeClip(input: {
     (size && size.height <= PREVIEW_MAX_HEIGHT
       ? null
       : "The preview must be a small, blurred video (720 pixels tall or less).") ??
+    ((await previewHasProtectionMark(previewPath))
+      ? null
+      : "This preview was not made by the BRYT VISION preview maker (blur + watermark), so it can't be saved. Please upload the original again.") ??
     (facts?.hasH264 && facts.hasAac
       ? null
       : "The preview must be H.264 video with AAC audio.") ??
@@ -158,11 +163,18 @@ export async function setClipPublished(clipId: string, published: boolean) {
     // A clip whose original was cleaned up after its last sale must not go back on sale.
     const { data: clip } = await supabase
       .from("clips")
-      .select("full_url")
+      .select("full_url, preview_url")
       .eq("id", clipId)
       .maybeSingle();
     if (!clip?.full_url) {
       throw new Error("This clip's original video has been removed, so it can't be published again.");
+    }
+    // Never put an unprotected preview on the public site: it must carry the blur + watermark tag.
+    const previewKey = clipPreviewObjectKeyFromUrl(clip.preview_url);
+    if (!previewKey || !(await previewHasProtectionMark(previewKey))) {
+      throw new Error(
+        "This clip's public preview was not made by the BRYT VISION preview maker (blur + watermark), so it can't be published. Upload the original again to get a protected preview.",
+      );
     }
   }
   const { error } = await supabase

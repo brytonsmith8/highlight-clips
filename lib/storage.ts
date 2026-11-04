@@ -2,6 +2,7 @@ import "server-only";
 
 import { publicEnv } from "@/lib/env";
 import { inspectMp4, type Mp4Facts } from "@/lib/mp4-inspect";
+import { PREVIEW_MARK } from "@/lib/preview-mark";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /** Private bucket holding clip original (full-quality) files. */
@@ -185,6 +186,25 @@ export async function previewMp4Facts(path: string): Promise<Mp4Facts | null> {
     return inspectMp4(await res.arrayBuffer());
   } catch {
     return null;
+  }
+}
+
+/**
+ * True when the public preview carries the tag our FFmpeg preview maker writes (see lib/preview-mark.ts).
+ * Reads only the first 256 KB (the MP4 index sits at the front). A missing, unreadable or untagged
+ * preview returns false, so the safe answer is always "not protected".
+ */
+export async function previewHasProtectionMark(path: string): Promise<boolean> {
+  try {
+    const res = await fetch(clipPreviewPublicUrl(path), {
+      headers: { Range: "bytes=0-262143" },
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const text = new TextDecoder("latin1").decode(await res.arrayBuffer());
+    return text.includes(PREVIEW_MARK);
+  } catch {
+    return false;
   }
 }
 

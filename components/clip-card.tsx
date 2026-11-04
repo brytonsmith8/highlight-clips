@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import type { ClipWithAthlete } from "@/lib/queries";
 import { formatPrice } from "@/lib/format";
-import { isPlayablePreviewUrl } from "@/lib/preview";
+import { checkPreviewPublic } from "@/lib/preview-gate";
 import { BuyButton } from "@/components/buy-button";
 
 /**
@@ -14,7 +14,8 @@ import { BuyButton } from "@/components/buy-button";
  * `preview_url` is a plain public URL column in this schema (no signed-URL step
  * for previews). `full_url` (the original) is never fetched or rendered here.
  */
-export function ClipCard({ clip }: { clip: ClipWithAthlete }) {
+export async function ClipCard({ clip }: { clip: ClipWithAthlete }) {
+  const showPreview = await checkPreviewPublic(clip.preview_url);
   const label = clip.athlete
     ? `${clip.athlete.name}${clip.athlete.jersey_number ? ` #${clip.athlete.jersey_number}` : ""}`
     : "Unlabeled clip";
@@ -26,7 +27,7 @@ export function ClipCard({ clip }: { clip: ClipWithAthlete }) {
         aria-label={`View clip: ${label}`}
         className="block"
       >
-        {isPlayablePreviewUrl(clip.preview_url) ? (
+        {showPreview && clip.preview_url ? (
           <video
             src={`${clip.preview_url}#t=0.1`}
             muted
@@ -37,7 +38,7 @@ export function ClipCard({ clip }: { clip: ClipWithAthlete }) {
           />
         ) : (
           <div className="flex aspect-video w-full items-center justify-center rounded border border-border bg-zinc-50 text-sm text-muted">
-            Preview unavailable
+            Preview being prepared
           </div>
         )}
 
