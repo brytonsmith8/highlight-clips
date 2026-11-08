@@ -23,7 +23,16 @@ function requireEmailFrom(): string {
 export interface PurchasedClipSummary {
   schoolA: string;
   schoolB: string;
-  priceDollars: number;
+  /** Optional: old call sites passed a per-clip price; bundle orders show the order total instead. */
+  priceDollars?: number;
+}
+
+function escapeEmailHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Sends the private order-link email after a successful checkout. */
@@ -32,6 +41,9 @@ export async function sendOrderConfirmationEmail(params: {
   token: string;
   clips: PurchasedClipSummary[];
   expiresAt: Date;
+  /** The one Scripture saved with this order (KJV). */
+  scripture?: { reference: string; text: string };
+  totalDollars?: number;
 }): Promise<void> {
   const resend = new Resend(requireResendApiKey());
   const orderUrl = `${publicEnv.siteUrl}/order/${params.token}`;
@@ -41,14 +53,38 @@ export async function sendOrderConfirmationEmail(params: {
   });
 
   const clipLines = params.clips
-    .map((c) => `<li>${c.schoolA} vs ${c.schoolB} — $${c.priceDollars.toFixed(2)}</li>`)
+    .map((c, i) => {
+      const price = typeof c.priceDollars === "number" ? ` — $${c.priceDollars.toFixed(2)}` : "";
+      return `<li>Highlight clip ${i + 1}: ${escapeEmailHtml(c.schoolA)} vs ${escapeEmailHtml(c.schoolB)}${price}</li>`;
+    })
     .join("");
+  const total =
+    typeof params.totalDollars === "number"
+      ? `<p><strong>Total paid: $${params.totalDollars.toFixed(2)}</strong></p>`
+      : "";
+
+  const scriptureBlock = params.scripture
+    ? `
+    <div style="margin:24px 0;padding:24px;background:#111827;border-radius:12px;text-align:center;">
+      <p style="margin:0 0 12px;color:#fbbf24;font-size:12px;letter-spacing:2px;font-weight:bold;">A WORD OF ENCOURAGEMENT</p>
+      <p style="margin:0;color:#ffffff;font-size:22px;line-height:1.4;font-weight:bold;">&ldquo;${escapeEmailHtml(params.scripture.text)}&rdquo;</p>
+      <p style="margin:16px 0 0;color:#fbbf24;font-size:16px;font-weight:bold;">${escapeEmailHtml(params.scripture.reference)} (KJV)</p>
+    </div>`
+    : "";
 
   const html = `
-    <p>Thanks for your purchase from Bryt Vision Media!</p>
+    <h2 style="margin:0 0 12px;">THANK YOU FOR SUPPORTING BRYTVISION!</h2>
+    <p>Your support means more than you know. BrytVision is built on faith, purpose, and the belief that the gifts and talents God has given us should be used for His glory.</p>
+    <p>We hope you enjoy your purchase, celebrate your hard work, and continue pursuing the purpose God has placed on your life.</p>
+    ${scriptureBlock}
+    <p>Remember, your talent is a gift, but what you do with it is your opportunity to glorify the One who gave it to you.</p>
+    <p>Thank you for being part of the BrytVision family. May God continue to bless you, guide your steps, and give you strength in everything you do.</p>
+    <p><strong>ALL FOR THE GLORY OF GOD.</strong></p>
+    <hr>
     <p>Your highlight clip${params.clips.length > 1 ? "s are" : " is"} ready to download here:</p>
     <p><a href="${orderUrl}">${orderUrl}</a></p>
     <ul>${clipLines}</ul>
+    ${total}
     <p><strong>Download access expires ${expiresLabel}.</strong>
        After that, the file${params.clips.length > 1 ? "s" : ""} will no longer be available —
        please download promptly.</p>
@@ -57,7 +93,7 @@ export async function sendOrderConfirmationEmail(params: {
   const { error } = await resend.emails.send({
     from: requireEmailFrom(),
     to: params.to,
-    subject: "Your Bryt Vision Media highlight clips are ready",
+    subject: "Thank you! Your Bryt Vision Media highlight clips are ready",
     html,
   });
 

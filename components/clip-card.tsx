@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import type { ClipWithAthlete } from "@/lib/queries";
-import { formatPrice } from "@/lib/format";
+import { INDIVIDUAL_PRICE_CENTS, formatCents } from "@/lib/pricing";
 import { checkPreviewPublic } from "@/lib/preview-gate";
 import { BuyButton } from "@/components/buy-button";
 
@@ -56,12 +56,12 @@ export async function ClipCard({ clip }: { clip: ClipWithAthlete }) {
             )}
           </p>
           <p className="whitespace-nowrap font-semibold">
-            {formatPrice(clip.price)}
+            {formatCents(INDIVIDUAL_PRICE_CENTS)}
           </p>
         </div>
       </Link>
 
-      <BuyButton clipId={clip.id} price={clip.price} />
+      <BuyButton clipId={clip.id} price={INDIVIDUAL_PRICE_CENTS / 100} />
     </div>
   );
 }

@@ -22,7 +22,7 @@ export function BuyButton({
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clipId }),
+        body: JSON.stringify({ clipIds: [clipId] }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) {

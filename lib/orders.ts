@@ -3,6 +3,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getStripeClient } from "@/lib/stripe";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { getOrderScripture, recordClipPurchase } from "@/lib/clip-orders";
 
 /**
  * Purchase/download access, built entirely from the existing `purchases`
@@ -94,69 +95,16 @@ export async function getPurchasesForCheckout(
   if (session.payment_status !== "paid") return [];
   if (Date.now() / 1000 - session.created > SELF_HEAL_MAX_AGE_SECONDS) return [];
 
-  const clipId = session.metadata?.clip_id;
-  const buyerEmail =
-    session.customer_details?.email ?? session.customer_email ?? null;
-  if (!clipId || !buyerEmail) return [];
-
-  const supabase = createServiceClient();
-
-  // Re-check right before inserting to narrow the window where the webhook
-  // records the same purchase concurrently (the table has no unique index on
-  // stripe_payment_id + clip_id).
-  const { data: raced } = await supabase
-    .from("purchases")
-    .select("id")
-    .eq("stripe_payment_id", sessionId)
-    .eq("clip_id", clipId)
-    .maybeSingle();
-
-  if (!raced) {
-    const purchasedAt = new Date().toISOString();
-    const { error } = await supabase.from("purchases").insert({
-      id: crypto.randomUUID(),
-      clip_id: clipId,
-      buyer_email: buyerEmail,
-      stripe_payment_id: sessionId,
-      purchased_at: purchasedAt,
-    });
-
-    if (error) {
-      console.error("[orders] self-heal insert failed:", error.message);
-    } else {
-      try {
-        const { data: clip } = await supabase
-          .from("clips")
-          .select("price, game_id")
-          .eq("id", clipId)
-          .maybeSingle();
-        const { data: game } = clip
-          ? await supabase
-              .from("games")
-              .select("school_a, school_b")
-              .eq("id", clip.game_id)
-              .maybeSingle()
-          : { data: null };
-
-        await sendOrderConfirmationEmail({
-          to: buyerEmail,
-          token: sessionId,
-          clips: [
-            {
-              schoolA: game?.school_a ?? "Unknown",
-              schoolB: game?.school_b ?? "Unknown",
-              priceDollars: clip?.price ?? 0,
-            },
-          ],
-          expiresAt: computeDownloadExpiry(purchasedAt),
-        });
-      } catch (emailError) {
-        console.error(
-          "[orders] self-heal confirmation email failed:",
-          emailError,
-        );
-      }
-    }
+  // Same recorder the webhook uses: records every clip in the session (idempotent, so a
+  // concurrent webhook can't double-record) and sends the confirmation email only if it
+  // is the one that created the rows.
+  try {
+    await recordClipPurchase(session);
+  } catch (error) {
+    console.error(
+      "[orders] self-heal record failed:",
+      error instanceof Error ? error.message : error,
+    );
   }
 
   return getPurchasesByToken(sessionId);
@@ -195,6 +143,8 @@ export async function resendOrderConfirmationEmail(
       : { data: [] as { id: string; school_a: string; school_b: string }[] };
   const gameById = new Map((games ?? []).map((g) => [g.id, g]));
 
+  const scripture = await getOrderScripture(token);
+
   try {
     await sendOrderConfirmationEmail({
       to: purchases[0].buyer_email,
@@ -205,10 +155,10 @@ export async function resendOrderConfirmationEmail(
         return {
           schoolA: game?.school_a ?? "Unknown",
           schoolB: game?.school_b ?? "Unknown",
-          priceDollars: clip?.price ?? 0,
         };
       }),
       expiresAt: computeDownloadExpiry(purchases[0].purchased_at),
+      scripture: { reference: scripture.reference, text: scripture.text },
     });
   } catch (error) {
     return {

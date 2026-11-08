@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { getClipById, getGameById } from "@/lib/queries";
-import { formatGameDate, formatPrice } from "@/lib/format";
+import { formatGameDate } from "@/lib/format";
+import { INDIVIDUAL_PRICE_CENTS, formatCents } from "@/lib/pricing";
 import { checkPreviewPublic } from "@/lib/preview-gate";
 import { BuyButton } from "@/components/buy-button";
 
@@ -18,7 +19,7 @@ export async function generateMetadata({
   const clip = await getClipById(clipId);
   if (!clip || clip.game_id !== id) return { title: "Clip not found" };
   const who = clip.athlete ? clip.athlete.name : "Highlight clip";
-  return { title: `${who} · ${formatPrice(clip.price)}` };
+  return { title: `${who} · ${formatCents(INDIVIDUAL_PRICE_CENTS)}` };
 }
 
 export default async function ClipPage({ params }: ClipPageProps) {
@@ -72,7 +73,7 @@ export default async function ClipPage({ params }: ClipPageProps) {
         )}
       </div>
 
-      <p className="mt-4 text-lg font-semibold">{formatPrice(clip.price)}</p>
+      <p className="mt-4 text-lg font-semibold">{formatCents(INDIVIDUAL_PRICE_CENTS)}</p>
       <p className="mt-1 text-sm text-muted">
         {showPreview
           ? "Preview quality shown above. Purchase to download the full-quality clip."
@@ -80,7 +81,7 @@ export default async function ClipPage({ params }: ClipPageProps) {
       </p>
 
       <div className="mt-3 max-w-xs">
-        <BuyButton clipId={clip.id} price={clip.price} />
+        <BuyButton clipId={clip.id} price={INDIVIDUAL_PRICE_CENTS / 100} />
       </div>
     </div>
   );

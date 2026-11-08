@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 import { getStripeClient, requireStripeWebhookSecret } from "@/lib/stripe";
-import { createServiceClient } from "@/lib/supabase/service";
-import { sendOrderConfirmationEmail } from "@/lib/email";
-import { computeDownloadExpiry } from "@/lib/orders";
+import { recordClipPurchase } from "@/lib/clip-orders";
 
 /**
  * Records a purchase after a completed Stripe Checkout and emails the
@@ -55,79 +53,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
-  const clipId = session.metadata?.clip_id;
-  const buyerEmail = session.customer_details?.email ?? session.customer_email;
-
-  if (!clipId || !buyerEmail) {
-    console.error(
-      "[stripe webhook] session missing clip_id or buyer email:",
-      session.id,
-    );
-    return NextResponse.json({ received: true });
-  }
-
-  const supabase = createServiceClient();
-
-  const { data: existing, error: existingError } = await supabase
-    .from("purchases")
-    .select("id")
-    .eq("stripe_payment_id", session.id)
-    .eq("clip_id", clipId)
-    .maybeSingle();
-
-  if (existingError) {
-    console.error("[stripe webhook] lookup failed:", existingError.message);
-    return NextResponse.json({ error: existingError.message }, { status: 500 });
-  }
-
-  if (existing) {
-    // Already recorded (Stripe retry) — nothing more to do.
-    return NextResponse.json({ received: true });
-  }
-
-  const purchasedAt = new Date().toISOString();
-  const { error: insertError } = await supabase.from("purchases").insert({
-    id: crypto.randomUUID(),
-    clip_id: clipId,
-    buyer_email: buyerEmail,
-    stripe_payment_id: session.id,
-    purchased_at: purchasedAt,
-  });
-
-  if (insertError) {
-    console.error("[stripe webhook] failed to record purchase:", insertError.message);
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
-
-  const { data: clip } = await supabase
-    .from("clips")
-    .select("price, game_id")
-    .eq("id", clipId)
-    .maybeSingle();
-  const { data: game } = clip
-    ? await supabase
-        .from("games")
-        .select("school_a, school_b")
-        .eq("id", clip.game_id)
-        .maybeSingle()
-    : { data: null };
-
+  // One or many clips (`clip_ids`), all recorded under this session with ONE Scripture.
+  // Idempotent: a Stripe retry skips clips that are already recorded.
   try {
-    await sendOrderConfirmationEmail({
-      to: buyerEmail,
-      token: session.id,
-      clips: [
-        {
-          schoolA: game?.school_a ?? "Unknown",
-          schoolB: game?.school_b ?? "Unknown",
-          priceDollars: clip?.price ?? 0,
-        },
-      ],
-      expiresAt: computeDownloadExpiry(purchasedAt),
-    });
-  } catch (emailError) {
-    // The purchase is recorded either way; email failure shouldn't fail the webhook.
-    console.error("[stripe webhook] failed to send confirmation email:", emailError);
+    await recordClipPurchase(session);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not record purchase.";
+    console.error("[stripe webhook] failed to record purchase:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
