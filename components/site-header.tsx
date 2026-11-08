@@ -25,7 +25,7 @@ export function SiteHeader() {
             priority
             className="h-12 w-12 rounded-full ring-1 ring-white/25"
           />
-          <span className="leading-none">
+          <span className="hidden leading-none min-[430px]:block">
             <span className="block font-display text-2xl font-extrabold uppercase tracking-wide">
               BRYT <span className="text-red-600">VISION</span>
             </span>

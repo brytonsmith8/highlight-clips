@@ -163,6 +163,23 @@ export function CartSummary() {
     }
   }
 
+  if (selected.size === 0) {
+    return (
+      <aside
+        aria-label="Your purchase"
+        className="sticky bottom-3 z-20 mt-8 rounded-xl border-2 border-accent bg-white px-4 py-3 shadow-lg"
+      >
+        <p className="text-sm font-semibold text-accent">
+          Select {BUNDLE_MIN_CLIPS} or more highlights and save! Get every clip for just{" "}
+          {formatCents(BUNDLE_PRICE_CENTS)} each.
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Tick &ldquo;Select&rdquo; on the clips you want, or use Buy on a single clip.
+        </p>
+      </aside>
+    );
+  }
+
   return (
     <aside
       aria-label="Your purchase"
