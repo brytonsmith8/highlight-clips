@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getAthletesForGame, getClipsForGame, getGameById } from "@/lib/queries";
 import { formatGameDate } from "@/lib/format";
 import { ClipCard } from "@/components/clip-card";
+import { CartSummary, SelectableClip, SelectionProvider } from "@/components/clip-selection";
 
 interface GamePageProps {
   params: Promise<{ id: string }>;
@@ -70,11 +71,16 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
             No clips here yet.
           </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {clips.map((clip) => (
-              <ClipCard key={clip.id} clip={clip} />
-            ))}
-          </div>
+          <SelectionProvider gameId={game.id}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {clips.map((clip) => (
+                <SelectableClip key={clip.id} clipId={clip.id}>
+                  <ClipCard clip={clip} />
+                </SelectableClip>
+              ))}
+            </div>
+            <CartSummary />
+          </SelectionProvider>
         )}
       </div>
     </div>

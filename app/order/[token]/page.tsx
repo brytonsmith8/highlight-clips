@@ -7,7 +7,14 @@ import {
   isDownloadExpired,
 } from "@/lib/orders";
 import { createServiceClient } from "@/lib/supabase/service";
-import { formatGameDate, formatPrice } from "@/lib/format";
+import { formatGameDate } from "@/lib/format";
+import { getOrderScripture } from "@/lib/clip-orders";
+import { ScriptureCard } from "@/components/scripture-card";
+import {
+  THANK_YOU_HEADLINE,
+  THANK_YOU_PARAGRAPHS,
+  THANK_YOU_SIGNOFF,
+} from "@/lib/scriptures";
 import { Countdown } from "@/components/countdown";
 
 export const metadata: Metadata = {
@@ -34,11 +41,15 @@ export default async function OrderPage({ params }: OrderPageProps) {
     new Map(allPurchases.map((p) => [p.clip_id, p])).values(),
   );
 
+  // Reaching this point means the payment was verified (rows exist only for paid sessions).
+  // The Scripture is saved with the order, so a refresh always shows the same one.
+  const scripture = await getOrderScripture(token);
+
   const supabase = createServiceClient();
   const clipIds = purchases.map((p) => p.clip_id);
   const { data: clips } = await supabase
     .from("clips")
-    .select("id, price, game_id")
+    .select("id, game_id")
     .in("id", clipIds);
 
   const gameIds = Array.from(new Set((clips ?? []).map((c) => c.game_id)));
@@ -63,7 +74,35 @@ export default async function OrderPage({ params }: OrderPageProps) {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-bold tracking-tight">Your purchase</h1>
+      <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-900">
+        <p className="text-lg font-bold">Payment successful &#10003;</p>
+        <p className="mt-1 text-sm">
+          {purchases.length > 1
+            ? `Your ${purchases.length} highlight clips are ready to download below.`
+            : "Your highlight clip is ready to download below."}
+        </p>
+      </div>
+
+      <section className="mt-6">
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+          {THANK_YOU_HEADLINE}
+        </h1>
+        {THANK_YOU_PARAGRAPHS.map((text, i) => (
+          <p key={i} className="mt-3 leading-relaxed">
+            {text}
+          </p>
+        ))}
+      </section>
+
+      <div className="mt-6">
+        <ScriptureCard scripture={scripture} />
+      </div>
+
+      <p className="mt-6 text-center text-lg font-extrabold tracking-wide">
+        {THANK_YOU_SIGNOFF}
+      </p>
+
+      <h2 className="mt-10 text-xl font-bold tracking-tight">Your highlight clips</h2>
       <p className="mt-1 text-sm text-muted">
         Download {purchases.length > 1 ? "these clips" : "this clip"} before
         your access window closes.
@@ -88,7 +127,6 @@ export default async function OrderPage({ params }: OrderPageProps) {
               {game && (
                 <p className="text-sm text-muted">{formatGameDate(game.game_date)}</p>
               )}
-              {clip && <p className="mt-1 text-sm">{formatPrice(clip.price)}</p>}
 
               {expired ? (
                 <p className="mt-3 text-sm text-red-600">
