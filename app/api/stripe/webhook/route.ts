@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 
 import { getStripeClient, requireStripeWebhookSecret } from "@/lib/stripe";
 import { recordClipPurchase } from "@/lib/clip-orders";
+import { handleMerchCheckoutCompleted } from "@/lib/merch-order";
 
 /**
  * Records a purchase after a completed Stripe Checkout and emails the
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   const stripe = getStripeClient();
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
+    event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
       requireStripeWebhookSecret(),
@@ -46,6 +47,13 @@ export async function POST(request: Request) {
   }
 
   const session = event.data.object as Stripe.Checkout.Session;
+
+  // Merch orders are handled separately and never touch the clip purchase path.
+  if (session.metadata?.type === "merch") {
+    await handleMerchCheckoutCompleted(stripe, session);
+    return NextResponse.json({ received: true });
+  }
+
   // A completed Checkout is not always a paid one (delayed payment methods). Only grant
   // download access once the money has actually been received; a delayed payment is
   // recorded later by the async_payment_succeeded event.

@@ -101,3 +101,60 @@ export async function sendOrderConfirmationEmail(params: {
     throw new Error(`Failed to send order confirmation email: ${error.message}`);
   }
 }
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export interface MerchEmailLine {
+  description: string;
+  quantity: number;
+  totalDollars: number;
+}
+
+/** Sends the merch order confirmation (no download link — this is a shipped product). */
+export async function sendMerchConfirmationEmail(params: {
+  to: string;
+  orderRef: string;
+  lines: MerchEmailLine[];
+  totalDollars: number;
+  shippingLines: string[];
+}): Promise<void> {
+  const resend = new Resend(requireResendApiKey());
+  const thanksUrl = `${publicEnv.siteUrl}/merch/thanks?session_id=${encodeURIComponent(params.orderRef)}`;
+
+  const items = params.lines
+    .map(
+      (l) =>
+        `<li>${escapeHtml(l.description)} &times; ${l.quantity} — $${l.totalDollars.toFixed(2)}</li>`,
+    )
+    .join("");
+  const address = params.shippingLines.length
+    ? `<p><strong>Shipping to:</strong><br>${params.shippingLines.map(escapeHtml).join("<br>")}</p>`
+    : "";
+
+  const html = `
+    <p>Thank you for your BRYT VISION order! Your payment was received.</p>
+    <ul>${items}</ul>
+    <p><strong>Total paid: $${params.totalDollars.toFixed(2)}</strong></p>
+    ${address}
+    <p>You can view your order summary any time here:<br>
+       <a href="${thanksUrl}">${thanksUrl}</a></p>
+    <p>All for the glory of God.</p>
+  `;
+
+  const { error } = await resend.emails.send({
+    from: requireEmailFrom(),
+    to: params.to,
+    subject: "Your BRYT VISION order is confirmed",
+    html,
+  });
+
+  if (error) {
+    throw new Error(`Failed to send merch confirmation email: ${error.message}`);
+  }
+}

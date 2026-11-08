@@ -5,7 +5,7 @@
   --foreground: #0a0a0a;
   --muted: #6b7280;
   --border: #e5e7eb;
-  --accent: #1d4ed8;
+  --accent: #c8102e; /* BRYT VISION red */
 }
 
 @theme inline {
@@ -15,6 +15,7 @@
   --color-border: var(--border);
   --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-barlow-condensed);
 }
 
 body {
@@ -24,4 +25,148 @@ body {
     "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Visible keyboard focus everywhere; white on the dark hero band. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.on-dark :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* ---- Homepage hero: 3D coin logo + lighting ---- */
+.hero-bg {
+  background:
+    radial-gradient(45% 38% at 76% 14%, rgba(220, 38, 38, 0.32), transparent 70%),
+    radial-gradient(35% 25% at 12% 0%, rgba(255, 255, 255, 0.08), transparent 70%),
+    #000;
+}
+
+.coin-scene {
+  --coin-size: min(56vw, 230px);
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin-inline: auto;
+  width: var(--coin-size);
+  padding-bottom: 36px;
+  perspective: 1400px;
+}
+
+.coin-glow {
+  position: absolute;
+  inset: -18%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.16), rgba(220, 38, 38, 0.22) 45%, transparent 72%);
+  filter: blur(18px);
+}
+
+.coin-float {
+  animation: coin-bob 6s ease-in-out infinite;
+}
+
+.coin {
+  position: relative;
+  width: var(--coin-size);
+  height: var(--coin-size);
+  transform-style: preserve-3d;
+  animation: coin-spin 14s ease-in-out infinite;
+}
+
+.coin > * {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+}
+
+.coin-rim {
+  background: linear-gradient(135deg, #f04a4a, #8f1219 60%, #4a0a0e);
+}
+
+.coin-face {
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: #000;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.22);
+}
+.coin-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 38%, transparent 70%, rgba(220, 38, 38, 0.18));
+  pointer-events: none;
+}
+.coin-front {
+  transform: translateZ(7px);
+}
+.coin-back {
+  transform: rotateY(180deg) translateZ(7px);
+}
+
+.coin-shadow {
+  position: absolute;
+  bottom: 4px;
+  left: 14%;
+  right: 14%;
+  height: 22px;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, rgba(220, 38, 38, 0.55), rgba(0, 0, 0, 0.5) 55%, transparent 100%);
+  filter: blur(6px);
+  animation: coin-shadow 6s ease-in-out infinite;
+}
+
+/* Hold on the front face, then one smooth full turn. */
+@keyframes coin-spin {
+  0%,
+  38% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+@keyframes coin-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes coin-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scaleX(0.88);
+    opacity: 0.6;
+  }
+}
+
+/* Reduced motion: a still, slightly angled coin so the depth still reads. */
+@media (prefers-reduced-motion: reduce) {
+  .coin,
+  .coin-float,
+  .coin-shadow {
+    animation: none;
+  }
+  .coin {
+    transform: rotateY(-14deg) rotateX(4deg);
+  }
+}
+
+@media (min-width: 768px) {
+  .coin-scene {
+    --coin-size: min(36vw, 330px);
+  }
+}
+
+/* The admin area keeps its original blue accent so its buttons don't read as "danger" red. */
+.admin-scope {
+  --accent: #1d4ed8;
 }
