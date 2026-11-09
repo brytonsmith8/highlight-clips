@@ -4,6 +4,7 @@ import Link from "next/link";
 import { requireAdminOrRedirect } from "@/lib/admin/auth";
 import { adminListOrders } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
+import { effectiveAccess, listOrderAccessFlags } from "@/lib/order-access";
 import { listEditOrders } from "@/lib/edit-orders";
 import { ADMIN_SETTABLE_STATUSES, EDIT_STATUSES, editStatusLabel } from "@/lib/edit-offer";
 import { setEditStatusAction } from "./edit-actions";
@@ -29,9 +30,29 @@ function fmt(iso: string): string {
   });
 }
 
+/** Refund / dispute state of an order, shown in red so it is never missed. Nothing here changes access by itself. */
+function AccessBadge({ flags }: { flags: ReturnType<typeof listOrderAccessFlags> extends Promise<Map<string, infer F>> ? F | undefined : never }) {
+  if (!flags) return null;
+  const a = effectiveAccess(flags);
+  const labels: string[] = [];
+  if (flags.refund_status === "full") labels.push("FULLY REFUNDED: downloads revoked");
+  if (flags.refund_status === "partial") labels.push("PARTIAL REFUND: review manually (clips NOT revoked)");
+  if (flags.dispute_status === "open") labels.push("DISPUTE OPEN: downloads suspended");
+  if (flags.dispute_status === "lost") labels.push("DISPUTE LOST: downloads revoked");
+  if (flags.dispute_status === "won") labels.push("Dispute won");
+  if (flags.needs_review && !labels.some((l) => l.startsWith("PARTIAL"))) labels.push("Needs manual review");
+  if (labels.length === 0) return null;
+  return (
+    <p className={"mt-1 rounded border p-2 text-xs font-semibold " + (a.allowed ? "border-amber-400 bg-amber-50 text-amber-900" : "border-red-500 bg-red-50 text-red-800")}>
+      {labels.join(" · ")}
+      {flags.note ? <span className="block font-normal">{flags.note}</span> : null}
+    </p>
+  );
+}
+
 export default async function AdminOrdersPage() {
   await requireAdminOrRedirect();
-  const [orders, editOrders] = await Promise.all([adminListOrders(), listEditOrders()]);
+  const [orders, editOrders, accessFlags] = await Promise.all([adminListOrders(), listEditOrders(), listOrderAccessFlags()]);
   const editTokens = new Set(editOrders.map((e) => e.stripe_session_id));
   const needsWork = editOrders.filter((e) => e.status !== "fulfilled");
 
@@ -142,6 +163,7 @@ export default async function AdminOrdersPage() {
                     {e.delivery_path &&
                       ` · ${e.first_downloaded_at ? `customer downloaded ${e.download_count ?? 1}× (first ${new Date(e.first_downloaded_at).toLocaleString("en-US")})` : "not downloaded yet"}`}
                   </p>
+                  <AccessBadge flags={accessFlags.get(e.stripe_session_id)} />
                   <EditDeliveryUpload sessionId={e.stripe_session_id} delivered={!!e.delivery_path} />
                 </div>
               ))}
@@ -165,6 +187,7 @@ export default async function AdminOrdersPage() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="text-sm">
                   <p className="font-medium">{order.buyerEmail}</p>
+                  <AccessBadge flags={accessFlags.get(order.token)} />
                   {editTokens.has(order.token) && (
                     <p className="mt-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
                       Includes BRYT VISION EDIT + free shirt (see above)

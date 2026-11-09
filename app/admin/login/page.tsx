@@ -20,7 +20,11 @@ export default async function AdminLoginPage({
     <div className="mx-auto max-w-sm px-4 py-16">
       <h1 className="text-xl font-semibold">Admin sign in</h1>
       {error && (
-        <p className="mt-2 text-sm text-red-600">Incorrect password.</p>
+        <p className="mt-2 text-sm text-red-600">
+          {error === "locked"
+            ? "Too many incorrect attempts. Please wait 15 minutes and try again."
+            : "Incorrect password."}
+        </p>
       )}
       <form action={login} className="mt-6 space-y-4">
         <input

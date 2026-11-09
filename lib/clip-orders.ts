@@ -69,6 +69,43 @@ async function pickNewScripture(token: string): Promise<Scripture> {
   }
 }
 
+
+type PurchaseRowInput = { id: string; clip_id: string; buyer_email: string; stripe_payment_id: string; purchased_at: string };
+type InsertResult = { count: number } | { missingScripture: true } | { error: string };
+
+function isNoUniqueIndexError(error: { message?: string; code?: string }): boolean {
+  return error.code === "42P10" || /no unique or exclusion constraint/i.test(error.message ?? "");
+}
+
+/**
+ * Insert purchase rows at most once per (order, clip). Returns how many rows THIS call actually inserted.
+ * - Normal path: INSERT .. ON CONFLICT DO NOTHING (needs the unique index from migration 0008).
+ * - Before 0008 is applied: falls back to the previous plain insert (the race window then still exists).
+ * - A duplicate-key error means another request already recorded the rows: counted as 0 inserted, not a failure.
+ */
+async function insertPurchases(
+  supabase: ReturnType<typeof createServiceClient>,
+  rows: PurchaseRowInput[],
+  scriptureRef: string | null,
+): Promise<InsertResult> {
+  const payload = rows.map((r) => (scriptureRef ? { ...r, scripture: scriptureRef } : r));
+  const up = await supabase
+    .from("purchases")
+    .upsert(payload, { onConflict: "stripe_payment_id,clip_id", ignoreDuplicates: true })
+    .select("id");
+  if (!up.error) return { count: (up.data ?? []).length };
+  if (up.error.code === "23505") return { count: 0 };
+  if (scriptureRef && isMissingScriptureColumn(up.error.message)) return { missingScripture: true };
+  if (isNoUniqueIndexError(up.error)) {
+    const ins = await supabase.from("purchases").insert(payload);
+    if (!ins.error) return { count: payload.length };
+    if (ins.error.code === "23505") return { count: 0 };
+    if (scriptureRef && isMissingScriptureColumn(ins.error.message)) return { missingScripture: true };
+    return { error: ins.error.message };
+  }
+  return { error: up.error.message };
+}
+
 export interface RecordResult {
   /** True when this call created the purchase rows (and sent the email). */
   recorded: boolean;
@@ -115,19 +152,22 @@ async function recordClipsOnly(session: Stripe.Checkout.Session): Promise<Record
     purchased_at: purchasedAt,
   }));
 
-  let { error } = await supabase
-    .from("purchases")
-    .insert(rows.map((r) => ({ ...r, scripture: scripture.reference })));
-  if (error && isMissingScriptureColumn(error.message)) {
+  // Record atomically and idempotently. One statement, ON CONFLICT DO NOTHING on (stripe_payment_id, clip_id)
+  // (unique index from migration 0008): when the webhook and the order page race, exactly ONE of them inserts
+  // each row, and the other gets back zero inserted rows. Only the request that really inserted rows may email.
+  let inserted = await insertPurchases(supabase, rows, scripture.reference);
+  if ("missingScripture" in inserted) {
     // The optional `scripture` column has not been added yet: record without it. The order page
     // and email then use the stable per-order verse, so they still always agree.
-    ({ error } = await supabase.from("purchases").insert(rows));
     scripture = scriptureForOrder(session.id);
+    inserted = await insertPurchases(supabase, rows, null);
   }
-  if (error) throw new Error(error.message);
+  if ("error" in inserted) throw new Error(inserted.error);
+  if ("missingScripture" in inserted) throw new Error("purchases insert failed");
+  const insertedCount = inserted.count;
 
-  // Only the first recording of an order emails the customer (a retry returned above).
-  if (have.size === 0) {
+  // Only the request that created the order's rows emails the customer (a retry or a losing racer inserts 0).
+  if (have.size === 0 && insertedCount > 0) {
     try {
       const { data: clips } = await supabase.from("clips").select("id, game_id").in("id", clipIds);
       const gameIds = Array.from(new Set((clips ?? []).map((c: { game_id: string }) => c.game_id)));
@@ -172,5 +212,5 @@ async function recordClipsOnly(session: Stripe.Checkout.Session): Promise<Record
     }
   }
 
-  return { recorded: true };
+  return { recorded: insertedCount > 0 };
 }

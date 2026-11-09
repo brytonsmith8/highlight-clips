@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPurchaseForTokenAndClip, isDownloadExpired } from "@/lib/orders";
 import { createServiceClient } from "@/lib/supabase/service";
 import { resolveClipDownloadUrl } from "@/lib/storage";
+import { accessMessage, getOrderAccess } from "@/lib/order-access";
 
 interface DownloadRouteParams {
   params: Promise<{ token: string; clipId: string }>;
@@ -31,6 +32,13 @@ export async function GET(_request: Request, { params }: DownloadRouteParams) {
   const purchase = await getPurchaseForTokenAndClip(token, clipId);
   if (!purchase) {
     return NextResponse.json({ error: "Purchase not found." }, { status: 404 });
+  }
+  const access = await getOrderAccess(token);
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: accessMessage(access.reason) },
+      { status: access.reason === "unavailable" ? 503 : 403 },
+    );
   }
   if (isDownloadExpired(purchase.purchased_at)) {
     return NextResponse.json(

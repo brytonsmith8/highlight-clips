@@ -18,6 +18,7 @@ import {
 import { Countdown } from "@/components/countdown";
 import { getEditOrderPublic } from "@/lib/edit-orders";
 import { editStatusLabel } from "@/lib/edit-offer";
+import { accessMessage, getOrderAccess } from "@/lib/order-access";
 
 export const metadata: Metadata = {
   title: "Your order",
@@ -48,6 +49,8 @@ export default async function OrderPage({ params }: OrderPageProps) {
   const scripture = await getOrderScripture(token);
   // The BRYT VISION EDIT add-on (if this order has one). No address or phone is ever shown here.
   const editOrder = await getEditOrderPublic(token);
+  // Refunded / disputed orders keep their record but not their downloads.
+  const access = await getOrderAccess(token);
 
   const supabase = createServiceClient();
   const clipIds = purchases.map((p) => p.clip_id);
@@ -87,6 +90,12 @@ export default async function OrderPage({ params }: OrderPageProps) {
         </p>
       </div>
 
+      {!access.allowed && (
+        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800" role="alert">
+          {accessMessage(access.reason)}
+        </div>
+      )}
+
       {editOrder && (
         <section className="mt-6 rounded-lg border-2 border-red-600 bg-black p-4 text-white" aria-label="BRYT VISION EDIT">
           <p className="font-display text-2xl font-extrabold uppercase tracking-wide">
@@ -99,7 +108,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
             checkout.
           </p>
           <p className="mt-2 text-sm font-semibold">Status: {editStatusLabel(editOrder.status)}</p>
-          {editOrder.delivered && (
+          {editOrder.delivered && access.allowed && (
             <a
               href={`/api/orders/${token}/edit/download`}
               className="mt-3 inline-block rounded bg-red-600 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white"
@@ -158,7 +167,9 @@ export default async function OrderPage({ params }: OrderPageProps) {
                 <p className="text-sm text-muted">{formatGameDate(game.game_date)}</p>
               )}
 
-              {expired ? (
+              {!access.allowed ? (
+                <p className="mt-3 text-sm text-red-600">{accessMessage(access.reason)}</p>
+              ) : expired ? (
                 <p className="mt-3 text-sm text-red-600">
                   Download window has expired.
                 </p>

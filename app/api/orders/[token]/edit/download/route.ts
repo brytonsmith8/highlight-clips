@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { isEditDeliveryExpired, isValidSessionId, signedEditDownloadUrl } from "@/lib/edit-delivery";
 import { getEditDelivery, recordEditDownload } from "@/lib/edit-orders";
+import { accessMessage, getOrderAccess } from "@/lib/order-access";
 
 interface Params {
   params: Promise<{ token: string }>;
@@ -11,6 +12,13 @@ interface Params {
 export async function GET(_req: Request, { params }: Params) {
   const { token } = await params;
   if (!isValidSessionId(token)) return NextResponse.json({ error: "Order not found." }, { status: 404 });
+  const access = await getOrderAccess(token);
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: accessMessage(access.reason) },
+      { status: access.reason === "unavailable" ? 503 : 403 },
+    );
+  }
   const d = await getEditDelivery(token);
   if (!d) return NextResponse.json({ error: "Your edit is not ready yet." }, { status: 404 });
   if (isEditDeliveryExpired(d.deliveredAt)) {

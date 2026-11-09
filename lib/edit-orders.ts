@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 
 import { EDIT_PRICE_CENTS, ADMIN_SETTABLE_STATUSES, type EditStatus } from "@/lib/edit-offer";
 import { sendEditReadyEmail } from "@/lib/email";
+import { getOrderAccess } from "@/lib/order-access";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -270,6 +271,7 @@ export async function notifyEditReady(sessionId: string): Promise<{ sent: boolea
     } | null;
     if (!d || d.payment_status !== "paid" || !d.delivery_path) return { sent: false, reason: "not deliverable" };
     if (!d.customer_email) return { sent: false, reason: "no customer email on the order" };
+    if (!(await getOrderAccess(sessionId)).allowed) return { sent: false, reason: "order refunded or under dispute" };
     const label = [d.athlete_jersey ? `#${d.athlete_jersey}` : "", d.athlete_name ?? ""].filter(Boolean).join(" ") || null;
     await sendEditReadyEmail({ to: d.customer_email, token: sessionId, athleteLabel: label });
     return { sent: true };
