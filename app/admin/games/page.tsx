@@ -48,13 +48,13 @@ export default async function AdminGamesPage() {
         </p>
         <input
           name="school_a"
-          placeholder="School A"
+          placeholder="Home school"
           required
           className="w-full rounded border border-border px-3 py-2"
         />
         <input
           name="school_b"
-          placeholder="School B"
+          placeholder="Away school / opponent"
           required
           className="w-full rounded border border-border px-3 py-2"
         />
@@ -68,6 +68,11 @@ export default async function AdminGamesPage() {
           name="sport"
           list="sport-suggestions"
           placeholder="Sport (Football, Basketball, Baseball…)"
+          className="w-full rounded border border-border px-3 py-2"
+        />
+        <input
+          name="title"
+          placeholder="Game title or details (optional)"
           className="w-full rounded border border-border px-3 py-2"
         />
         <datalist id="sport-suggestions">

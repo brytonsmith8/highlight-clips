@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 
 import { discardClipUpload, finalizeClip, startClipUpload } from "@/app/admin/clips/actions";
+import { createAthleteProfile } from "@/app/admin/athletes/actions";
 import { INDIVIDUAL_PRICE_CENTS } from "@/lib/pricing";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,10 +13,20 @@ export interface ClipFormGame {
   schools: string[];
 }
 
+export interface ClipFormAthlete {
+  id: string;
+  school: string;
+  jersey: string;
+  label: string;
+}
+
 interface QueueItem {
   file: File;
   school: string;
   jersey: string;
+  /** "" = no athlete profile, "new" = create one from school + jersey + name, otherwise an existing profile id. */
+  athleteId: string;
+  name: string;
 }
 
 interface Pending {
@@ -28,6 +39,8 @@ interface Pending {
   gameId: string;
   school: string;
   jersey: string;
+  athleteId: string;
+  name: string;
 }
 
 const inputClass = "w-full rounded border border-border px-3 py-2";
@@ -39,7 +52,7 @@ const inputClass = "w-full rounded border border-border px-3 py-2";
  * clip is saved (unpublished). Clips are handled one at a time, in order. Price is fixed by the site
  * ($12.50 each, or the bundle price for 4+), so there is no price box.
  */
-export function NewClipForm({ games }: { games: ClipFormGame[] }) {
+export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athletes: ClipFormAthlete[] }) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [gameId, setGameId] = useState("");
@@ -50,6 +63,8 @@ export function NewClipForm({ games }: { games: ClipFormGame[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   // The latest queue/game for async steps (state would be stale inside them).
   const live = useRef<{ queue: QueueItem[]; gameId: string }>({ queue: [], gameId: "" });
+  // New athlete profiles already created during this batch, so five clips of #3 make ONE profile.
+  const created = useRef(new Map<string, string>());
 
   const game = games.find((g) => g.id === gameId);
   const schools = game?.schools ?? [];
@@ -58,16 +73,36 @@ export function NewClipForm({ games }: { games: ClipFormGame[] }) {
     setGameId(id);
     const g = games.find((x) => x.id === id);
     // Default each clip to the first school; the admin changes it per clip.
-    setQueue((q) => q.map((item) => ({ ...item, school: g?.schools[0] ?? "" })));
+    setQueue((q) => q.map((item) => withSuggestion({ ...item, school: g?.schools[0] ?? "" })));
   }
 
   function onFiles(files: FileList | null) {
     const list = Array.from(files ?? []);
-    setQueue(list.map((file) => ({ file, school: schools[0] ?? "", jersey: "" })));
+    setQueue(list.map((file) => ({ file, school: schools[0] ?? "", jersey: "", athleteId: "", name: "" })));
+  }
+
+  /** If exactly one existing profile has this school + jersey number, pre-select it (the admin can change it). */
+  function withSuggestion(item: QueueItem): QueueItem {
+    if (item.athleteId && item.athleteId !== "new") {
+      const still = athletes.find((a) => a.id === item.athleteId);
+      if (still && still.school.toLowerCase() === item.school.toLowerCase()) return item;
+    }
+    const j = item.jersey.trim().replace(/^#/, "").toLowerCase();
+    const matches = j
+      ? athletes.filter((a) => a.school.toLowerCase() === item.school.toLowerCase() && a.jersey.toLowerCase() === j)
+      : [];
+    if (matches.length === 1) return { ...item, athleteId: matches[0].id };
+    return item.athleteId === "new" ? item : { ...item, athleteId: "" };
   }
 
   function patchItem(i: number, patch: Partial<QueueItem>) {
-    setQueue((q) => q.map((item, idx) => (idx === i ? { ...item, ...patch } : item)));
+    setQueue((q) =>
+      q.map((item, idx) => {
+        if (idx !== i) return item;
+        const next = { ...item, ...patch };
+        return "school" in patch || "jersey" in patch ? withSuggestion(next) : next;
+      }),
+    );
   }
 
   async function runItem(i: number) {
@@ -117,6 +152,8 @@ export function NewClipForm({ games }: { games: ClipFormGame[] }) {
         gameId: gId,
         school: item.school,
         jersey: item.jersey.trim().replace(/^#/, ""),
+        athleteId: item.athleteId,
+        name: item.name.trim(),
       });
       setStatus(`Preview ready (${label}). Watch it below, then approve to save the clip.`);
     } catch (error) {
@@ -161,10 +198,21 @@ export function NewClipForm({ games }: { games: ClipFormGame[] }) {
     setBusy(true);
     try {
       setStatus("Saving clip…");
+      // Resolve the athlete profile only now (after approval), so a discarded preview never leaves a stray profile.
+      let athleteId: string | null = pending.athleteId && pending.athleteId !== "new" ? pending.athleteId : null;
+      if (pending.athleteId === "new") {
+        const key = `${pending.school}|${pending.jersey}|${pending.name}`.toLowerCase();
+        let id = created.current.get(key);
+        if (!id) {
+          id = (await createAthleteProfile({ school: pending.school, jersey: pending.jersey, name: pending.name })).id;
+          created.current.set(key, id);
+        }
+        athleteId = id;
+      }
       const saved = await finalizeClip({
         clipId: pending.clipId,
         gameId: pending.gameId,
-        athleteId: null,
+        athleteId,
         price: INDIVIDUAL_PRICE_CENTS / 100,
         previewPath: pending.previewPath,
         originalPath: pending.originalPath,
@@ -252,37 +300,67 @@ export function NewClipForm({ games }: { games: ClipFormGame[] }) {
             <li
               key={`${item.file.name}-${i}`}
               className={
-                "grid gap-2 rounded border p-2 sm:grid-cols-[1fr_auto_auto] sm:items-center " +
-                (current === i ? "border-accent" : "border-border")
+                "space-y-2 rounded border p-2 " + (current === i ? "border-accent" : "border-border")
               }
             >
-              <span className="truncate text-sm" title={item.file.name}>
+              <p className="truncate text-sm font-medium" title={item.file.name}>
                 {i + 1}. {item.file.name}
-              </span>
-              <select
-                aria-label={`School for ${item.file.name}`}
-                value={item.school}
-                disabled={working || !game}
-                onChange={(e) => patchItem(i, { school: e.target.value })}
-                className="rounded border border-border px-2 py-2 text-sm"
-              >
-                {!game && <option value="">Pick a game first</option>}
-                {schools.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <input
-                aria-label={`Jersey number for ${item.file.name}`}
-                inputMode="numeric"
-                maxLength={8}
-                placeholder="Jersey #"
-                value={item.jersey}
-                disabled={working}
-                onChange={(e) => patchItem(i, { jersey: e.target.value })}
-                className="w-full rounded border border-border px-2 py-2 text-sm sm:w-24"
-              />
+              </p>
+              <div className="grid gap-2 sm:grid-cols-[1fr_6rem]">
+                <select
+                  aria-label={`School for ${item.file.name}`}
+                  value={item.school}
+                  disabled={working || !game}
+                  onChange={(e) => patchItem(i, { school: e.target.value })}
+                  className="rounded border border-border px-2 py-2 text-sm"
+                >
+                  {!game && <option value="">Pick a game first</option>}
+                  {schools.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label={`Jersey number for ${item.file.name}`}
+                  inputMode="numeric"
+                  maxLength={8}
+                  placeholder="Jersey #"
+                  value={item.jersey}
+                  disabled={working}
+                  onChange={(e) => patchItem(i, { jersey: e.target.value })}
+                  className="w-full rounded border border-border px-2 py-2 text-sm"
+                />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <select
+                  aria-label={`Athlete profile for ${item.file.name}`}
+                  value={item.athleteId}
+                  disabled={working}
+                  onChange={(e) => patchItem(i, { athleteId: e.target.value })}
+                  className="rounded border border-border px-2 py-2 text-sm"
+                >
+                  <option value="">No athlete profile (jersey number only)</option>
+                  {athletes
+                    .filter((a) => a.school.toLowerCase() === item.school.toLowerCase())
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  <option value="new">+ New athlete profile from this school and jersey</option>
+                </select>
+                {item.athleteId === "new" && (
+                  <input
+                    aria-label={`Athlete name for ${item.file.name} (optional)`}
+                    placeholder="Athlete name (optional)"
+                    value={item.name}
+                    disabled={working}
+                    onChange={(e) => patchItem(i, { name: e.target.value })}
+                    className="rounded border border-border px-2 py-2 text-sm"
+                  />
+                )}
+              </div>
             </li>
           ))}
         </ul>

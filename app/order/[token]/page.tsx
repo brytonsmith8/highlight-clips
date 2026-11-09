@@ -16,6 +16,8 @@ import {
   THANK_YOU_SIGNOFF,
 } from "@/lib/scriptures";
 import { Countdown } from "@/components/countdown";
+import { getEditOrderPublic } from "@/lib/edit-orders";
+import { editStatusLabel } from "@/lib/edit-offer";
 
 export const metadata: Metadata = {
   title: "Your order",
@@ -44,6 +46,8 @@ export default async function OrderPage({ params }: OrderPageProps) {
   // Reaching this point means the payment was verified (rows exist only for paid sessions).
   // The Scripture is saved with the order, so a refresh always shows the same one.
   const scripture = await getOrderScripture(token);
+  // The BRYT VISION EDIT add-on (if this order has one). No address or phone is ever shown here.
+  const editOrder = await getEditOrderPublic(token);
 
   const supabase = createServiceClient();
   const clipIds = purchases.map((p) => p.clip_id);
@@ -82,6 +86,24 @@ export default async function OrderPage({ params }: OrderPageProps) {
             : "Your highlight clip is ready to download below."}
         </p>
       </div>
+
+      {editOrder && (
+        <section className="mt-6 rounded-lg border-2 border-red-600 bg-black p-4 text-white" aria-label="BRYT VISION EDIT">
+          <p className="font-display text-2xl font-extrabold uppercase tracking-wide">
+            Your BRYT VISION EDIT + <span className="text-red-500">FREE SHIRT</span> is confirmed
+          </p>
+          <p className="mt-2 text-sm text-white/85">
+            Your professionally edited highlight video is in the works and will be ready in about 5&ndash;7 days, or
+            sooner. Your free one-sleeve compression shirt ({editOrder.shirtColor}, size {editOrder.shirtSize}
+            {editOrder.shirtSleeve ? `, ${editOrder.shirtSleeve} sleeve` : ""}) will ship to the address you entered at
+            checkout.
+          </p>
+          <p className="mt-2 text-sm font-semibold">Status: {editStatusLabel(editOrder.status)}</p>
+          <p className="mt-2 text-xs text-white/60">
+            Your selected clips below are yours to download right now. Questions? Reply to your confirmation email.
+          </p>
+        </section>
+      )}
 
       <section className="mt-6">
         <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">

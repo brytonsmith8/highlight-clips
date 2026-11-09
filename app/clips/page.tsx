@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { DiscoveryClipCard } from "@/components/discovery-clip-card";
+import { CartSummary, SelectableClip, SelectionProvider } from "@/components/clip-selection";
 import { getDiscoveryCatalog, type DiscoveryClip } from "@/lib/discovery";
 import {
   applyFilters,
@@ -102,6 +103,7 @@ export default async function FindYourClipsPage({ searchParams }: PageProps) {
   const anyFilter = Object.values(filters).some(Boolean);
 
   return (
+    <SelectionProvider>
     <div className="on-dark hero-bg text-white">
       <div className="mx-auto max-w-6xl px-4 pb-14 pt-6 md:pt-10">
         <Link
@@ -254,6 +256,7 @@ export default async function FindYourClipsPage({ searchParams }: PageProps) {
                             {formatGameDate(game.game_date)}
                             {sport ? ` · ${sport}` : ""}
                           </p>
+                          {group[0].gameTitle && <p className="mt-1 text-sm text-white/60">{group[0].gameTitle}</p>}
                         </div>
                         <Link
                           href={`/games/${game.id}${filtersToQuery({ jersey: filters.jersey })}`}
@@ -264,7 +267,15 @@ export default async function FindYourClipsPage({ searchParams }: PageProps) {
                       </div>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {sorted.map((entry) => (
-                          <DiscoveryClipCard key={entry.clip.id} entry={entry} />
+                          <SelectableClip
+                            key={entry.clip.id}
+                            clipId={entry.clip.id}
+                            gameId={entry.game.id}
+                            athleteId={entry.clip.athlete_id}
+                            athleteLabel={entry.athleteLabel}
+                          >
+                            <DiscoveryClipCard entry={entry} />
+                          </SelectableClip>
                         ))}
                       </div>
                     </section>
@@ -274,7 +285,10 @@ export default async function FindYourClipsPage({ searchParams }: PageProps) {
             </>
           )}
         </div>
+
+        <CartSummary />
       </div>
     </div>
+    </SelectionProvider>
   );
 }

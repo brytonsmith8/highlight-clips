@@ -9,6 +9,7 @@ import {
 } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
 import { adminClipMetaByIds, metaColumnsReady } from "@/lib/admin/clip-meta";
+import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
 import { updateClipMeta } from "./meta-actions";
 import { NewClipForm } from "@/components/admin/new-clip-form";
 import { ConfirmButton } from "@/components/admin/confirm-button";
@@ -30,9 +31,10 @@ export default async function AdminClipsPage() {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
-  const [clipMeta, metaReady] = await Promise.all([
+  const [clipMeta, metaReady, athleteMeta] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     metaColumnsReady(),
+    adminAthleteMeta(),
   ]);
 
   return (
@@ -52,6 +54,14 @@ export default async function AdminClipsPage() {
           label: `${game.school_a} vs ${game.school_b} · ${game.game_date}`,
           schools: [game.school_a, game.school_b],
         }))}
+        athletes={athletes
+          .filter((a) => athleteMeta.get(a.id)?.school)
+          .map((a) => ({
+            id: a.id,
+            school: athleteMeta.get(a.id)?.school ?? "",
+            jersey: a.jersey_number ?? "",
+            label: `${a.jersey_number ? `#${a.jersey_number} ` : ""}${a.name || "(no name)"}`,
+          }))}
       />
 
       <div className="mt-6 space-y-2">
@@ -84,6 +94,29 @@ export default async function AdminClipsPage() {
                 {game && (
                   <form action={updateClipMeta} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="clipId" value={clip.id} />
+                    <select
+                      name="athleteId"
+                      defaultValue={clip.athlete_id ?? ""}
+                      aria-label="Athlete profile"
+                      className="rounded border border-border px-2 py-1 text-sm"
+                    >
+                      <option value="">No athlete profile</option>
+                      {athletes
+                        .filter(
+                          (a) =>
+                            a.id === clip.athlete_id ||
+                            [game.school_a, game.school_b].some(
+                              (s) => s.toLowerCase() === (athleteMeta.get(a.id)?.school ?? "").toLowerCase(),
+                            ),
+                        )
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.jersey_number ? `#${a.jersey_number} ` : ""}
+                            {a.name || "(no name)"}
+                            {athleteMeta.get(a.id)?.school ? ` · ${athleteMeta.get(a.id)?.school}` : ""}
+                          </option>
+                        ))}
+                    </select>
                     <select
                       name="school"
                       defaultValue={clipMeta.get(clip.id)?.school ?? ""}

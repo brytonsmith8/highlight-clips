@@ -52,3 +52,10 @@ export async function metaColumnsReady(): Promise<boolean> {
   const b = await createServiceClient().from("games").select("sport").limit(1);
   return !a.error && !b.error;
 }
+
+/** Optional free-text game title (column added by migration 0007); "" when unset or the column is missing. */
+export async function adminGameTitle(gameId: string): Promise<string> {
+  const { data, error } = await createServiceClient().from("games").select("title").eq("id", gameId).maybeSingle();
+  if (error || !data) return "";
+  return ((data as { title: string | null }).title ?? "").trim();
+}

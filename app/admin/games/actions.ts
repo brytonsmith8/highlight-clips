@@ -19,6 +19,7 @@ export async function createGame(formData: FormData) {
   const school_b = String(formData.get("school_b") ?? "").trim();
   const game_date = String(formData.get("game_date") ?? "").trim();
   const sport = String(formData.get("sport") ?? "").trim().slice(0, 60) || null;
+  const title = String(formData.get("title") ?? "").trim().slice(0, 160) || null;
 
   if (!school_a || !school_b || !game_date) {
     throw new Error("school_a, school_b, and game_date are required.");
@@ -32,9 +33,9 @@ export async function createGame(formData: FormData) {
     game_date,
     created_at: new Date().toISOString(),
   };
-  let { error } = await supabase.from("games").insert((sport ? { ...baseRow, sport } : baseRow) as Record<string, unknown>);
-  if (error && sport && isMissingColumnError(error.message)) {
-    // Migration 0006 not run yet: save the game without the sport.
+  let { error } = await supabase.from("games").insert(({ ...baseRow, ...(sport ? { sport } : {}), ...(title ? { title } : {}) }) as Record<string, unknown>);
+  if (error && (sport || title) && isMissingColumnError(error.message)) {
+    // Optional columns not added yet: save the game without the sport / title.
     ({ error } = await supabase.from("games").insert(baseRow));
   }
   if (error) throw new Error(error.message);

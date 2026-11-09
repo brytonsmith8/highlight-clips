@@ -130,3 +130,10 @@ export function filtersToQuery(f: Filters, override: Partial<Record<FilterKey, s
   const s = qs.toString();
   return s ? `?${s}` : "";
 }
+
+/** "#3 Jordan Smith · Booneville": whatever is known about the athlete, for cart / admin labels. */
+export function athleteDisplayLabel(a: { jersey?: string | null; name?: string | null; school?: string | null }): string {
+  const j = normalizeJersey(a.jersey);
+  const head = [j ? `#${j}` : "", (a.name ?? "").trim()].filter(Boolean).join(" ");
+  return [head || "Athlete", (a.school ?? "").trim()].filter(Boolean).join(" · ");
+}

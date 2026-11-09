@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { getAthletesForGame, getClipsForGame, getGameById } from "@/lib/queries";
-import { getClipMeta, getGameSports } from "@/lib/clip-meta";
-import { normalizeJersey } from "@/lib/discovery-filter";
+import { getAthleteSchools, getClipMeta, getGameSports, getGameTitles } from "@/lib/clip-meta";
+import { athleteDisplayLabel, normalizeJersey } from "@/lib/discovery-filter";
 import { formatGameDate } from "@/lib/format";
 import { ClipCard } from "@/components/clip-card";
 import { CartSummary, SelectableClip, SelectionProvider } from "@/components/clip-selection";
@@ -38,12 +38,14 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
   const game = await getGameById(id);
   if (!game) notFound();
 
-  const [athletes, byAthlete, allGameClips, meta, sports] = await Promise.all([
+  const [athletes, byAthlete, allGameClips, meta, sports, athleteSchools, titles] = await Promise.all([
     getAthletesForGame(game.id),
     getClipsForGame(game.id, { athleteId: athlete }),
     getClipsForGame(game.id),
     getClipMeta(),
     getGameSports(),
+    getAthleteSchools(),
+    getGameTitles(),
   ]);
   const jerseyOf = (c: (typeof byAthlete)[number]) =>
     normalizeJersey(meta.get(c.id)?.jersey ?? c.athlete?.jersey_number ?? null);
@@ -52,6 +54,7 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
     new Set(allGameClips.map(jerseyOf).filter((j): j is string => Boolean(j))),
   ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const sport = sports.get(game.id);
+  const gameTitle = titles.get(game.id);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -62,6 +65,7 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
         {formatGameDate(game.game_date)}
         {sport ? ` · ${sport}` : ""}
       </p>
+      {gameTitle && <p className="mt-1 text-sm text-muted">{gameTitle}</p>}
       <Link href="/clips" className="mt-2 inline-block text-sm font-semibold text-accent hover:underline">
         &larr; Find your clips
       </Link>
@@ -109,7 +113,21 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
           <SelectionProvider gameId={game.id}>
             <div className="grid gap-4 sm:grid-cols-2">
               {clips.map((clip) => (
-                <SelectableClip key={clip.id} clipId={clip.id}>
+                <SelectableClip
+                  key={clip.id}
+                  clipId={clip.id}
+                  gameId={game.id}
+                  athleteId={clip.athlete_id}
+                  athleteLabel={
+                    clip.athlete
+                      ? athleteDisplayLabel({
+                          jersey: clip.athlete.jersey_number,
+                          name: clip.athlete.name,
+                          school: athleteSchools.get(clip.athlete.id) ?? meta.get(clip.id)?.school,
+                        })
+                      : null
+                  }
+                >
                   <ClipCard clip={clip} jersey={meta.get(clip.id)?.jersey} school={meta.get(clip.id)?.school} />
                 </SelectableClip>
               ))}

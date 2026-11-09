@@ -11,6 +11,7 @@ import {
   type Scripture,
 } from "@/lib/scriptures";
 import { createServiceClient } from "@/lib/supabase/service";
+import { recordEditOrder } from "@/lib/edit-orders";
 
 /**
  * Recording a PAID clip checkout. Used by both the Stripe webhook and the order page's
@@ -73,7 +74,18 @@ export interface RecordResult {
   recorded: boolean;
 }
 
+/**
+ * Records everything a PAID session bought: the clips (and email) and, when present, the BRYT VISION EDIT
+ * order. The edit step runs even when the clips were already recorded, so a Stripe retry after a failed edit
+ * write completes it; both steps are idempotent.
+ */
 export async function recordClipPurchase(session: Stripe.Checkout.Session): Promise<RecordResult> {
+  const result = await recordClipsOnly(session);
+  await recordEditOrder(session);
+  return result;
+}
+
+async function recordClipsOnly(session: Stripe.Checkout.Session): Promise<RecordResult> {
   const clipIds = clipIdsFromSession(session);
   const buyerEmail = session.customer_details?.email ?? session.customer_email ?? null;
   if (clipIds.length === 0 || !buyerEmail) {
@@ -118,16 +130,20 @@ export async function recordClipPurchase(session: Stripe.Checkout.Session): Prom
   if (have.size === 0) {
     try {
       const { data: clips } = await supabase.from("clips").select("id, game_id").in("id", clipIds);
-      const gameId = (clips ?? [])[0]?.game_id;
-      const { data: game } = gameId
-        ? await supabase.from("games").select("school_a, school_b").eq("id", gameId).maybeSingle()
-        : { data: null };
+      const gameIds = Array.from(new Set((clips ?? []).map((c: { game_id: string }) => c.game_id)));
+      const { data: gameRows } = gameIds.length
+        ? await supabase.from("games").select("id, school_a, school_b").in("id", gameIds)
+        : { data: [] };
+      const gameById = new Map(
+        (gameRows ?? []).map((g: { id: string; school_a: string; school_b: string }) => [g.id, g]),
+      );
+      const clipGame = new Map((clips ?? []).map((c: { id: string; game_id: string }) => [c.id, gameById.get(c.game_id)]));
       await sendOrderConfirmationEmail({
         to: buyerEmail,
         token: session.id,
-        clips: clipIds.map(() => ({
-          schoolA: game?.school_a ?? "Unknown",
-          schoolB: game?.school_b ?? "Unknown",
+        clips: clipIds.map((id) => ({
+          schoolA: clipGame.get(id)?.school_a ?? "Unknown",
+          schoolB: clipGame.get(id)?.school_b ?? "Unknown",
         })),
         expiresAt: computeDownloadExpiry(purchasedAt),
         scripture: { reference: scripture.reference, text: scripture.text },

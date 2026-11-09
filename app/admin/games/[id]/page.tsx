@@ -13,7 +13,8 @@ import { formatGameDate, formatPrice } from "@/lib/format";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { deleteClipAction, setClipPublished } from "@/app/admin/clips/actions";
 import { deleteGameAction } from "@/app/admin/games/actions";
-import { adminClipMetaByIds, adminGameSports } from "@/lib/admin/clip-meta";
+import { adminClipMetaByIds, adminGameSports, adminGameTitle } from "@/lib/admin/clip-meta";
+import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
 import { updateClipMeta, updateGameDetails } from "@/app/admin/clips/meta-actions";
 
 export const metadata: Metadata = {
@@ -38,9 +39,11 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
   ]);
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
-  const [clipMeta, sports] = await Promise.all([
+  const [clipMeta, sports, athleteMeta, gameTitle] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     adminGameSports(),
+    adminAthleteMeta(),
+    adminGameTitle(id),
   ]);
   const sport = sports.get(game.id) ?? "";
   const totalPurchases = clips.reduce(
@@ -93,14 +96,14 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             name="school_a"
             defaultValue={game.school_a}
             required
-            aria-label="Team A"
+            aria-label="Home school"
             className="w-full rounded border border-border px-3 py-2"
           />
           <input
             name="school_b"
             defaultValue={game.school_b}
             required
-            aria-label="Team B"
+            aria-label="Away school / opponent"
             className="w-full rounded border border-border px-3 py-2"
           />
           <input
@@ -116,6 +119,13 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             defaultValue={sport}
             placeholder="Sport"
             aria-label="Sport"
+            className="w-full rounded border border-border px-3 py-2"
+          />
+          <input
+            name="title"
+            defaultValue={gameTitle}
+            placeholder="Game title or details (optional)"
+            aria-label="Game title or details"
             className="w-full rounded border border-border px-3 py-2"
           />
           <button type="submit" className="rounded bg-accent px-3 py-2 font-medium text-white">
@@ -163,6 +173,29 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
                 </p>
                 <form action={updateClipMeta} className="mt-2 flex flex-wrap items-center gap-2">
                   <input type="hidden" name="clipId" value={clip.id} />
+                  <select
+                    name="athleteId"
+                    defaultValue={clip.athlete_id ?? ""}
+                    aria-label="Athlete profile"
+                    className="rounded border border-border px-2 py-1 text-sm"
+                    >
+                    <option value="">No athlete profile</option>
+                    {athletes
+                      .filter(
+                        (a) =>
+                          a.id === clip.athlete_id ||
+                          [game.school_a, game.school_b].some(
+                            (s) => s.toLowerCase() === (athleteMeta.get(a.id)?.school ?? "").toLowerCase(),
+                          ),
+                      )
+                      .map((a) => (
+                      <option key={a.id} value={a.id}>
+                          {a.jersey_number ? `#${a.jersey_number} ` : ""}
+                          {a.name || "(no name)"}
+                          {athleteMeta.get(a.id)?.school ? ` · ${athleteMeta.get(a.id)?.school}` : ""}
+                      </option>
+                      ))}
+                  </select>
                   <select
                     name="school"
                     defaultValue={clipMeta.get(clip.id)?.school ?? ""}

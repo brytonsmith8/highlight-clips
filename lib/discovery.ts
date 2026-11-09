@@ -4,9 +4,9 @@ import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import type { Athlete, Clip, Game } from "@/lib/db/types";
-import { getClipMeta, getGameSports } from "@/lib/clip-meta";
+import { getAthleteSchools, getClipMeta, getGameSports, getGameTitles } from "@/lib/clip-meta";
 import { getGames, type ClipWithAthlete } from "@/lib/queries";
-import { normalizeJersey, type DiscoveryItem } from "@/lib/discovery-filter";
+import { athleteDisplayLabel, normalizeJersey, type DiscoveryItem } from "@/lib/discovery-filter";
 
 export interface DiscoveryClip {
   clip: ClipWithAthlete;
@@ -14,13 +14,22 @@ export interface DiscoveryClip {
   school: string | null;
   sport: string | null;
   jersey: string | null;
+  /** Cart label for the BRYT VISION EDIT ("#3 Name · School"); only meaningful when the clip has an athlete. */
+  athleteLabel: string | null;
+  gameTitle: string | null;
   item: DiscoveryItem;
 }
 
 /** Every published clip on the site, with its game, sport, school and jersey number. Read-only. */
 export const getDiscoveryCatalog = cache(async (): Promise<DiscoveryClip[]> => {
   const supabase = await createClient();
-  const [games, sports, meta] = await Promise.all([getGames(), getGameSports(), getClipMeta()]);
+  const [games, sports, meta, athleteSchools, titles] = await Promise.all([
+    getGames(),
+    getGameSports(),
+    getClipMeta(),
+    getAthleteSchools(),
+    getGameTitles(),
+  ]);
   const gameById = new Map(games.map((g) => [g.id, g]));
 
   const { data: clipRows, error } = await supabase
@@ -48,12 +57,21 @@ export const getDiscoveryCatalog = cache(async (): Promise<DiscoveryClip[]> => {
     const jersey = normalizeJersey(m?.jersey ?? athlete?.jersey_number ?? null);
     const school = m?.school ?? null;
     const sport = sports.get(game.id) ?? null;
+    const athleteLabel = athlete
+      ? athleteDisplayLabel({
+          jersey: athlete.jersey_number,
+          name: athlete.name,
+          school: athleteSchools.get(athlete.id) ?? school,
+        })
+      : null;
     out.push({
       clip: { ...row, athlete },
       game,
       school,
       sport,
       jersey,
+      athleteLabel,
+      gameTitle: titles.get(game.id) ?? null,
       item: {
         clipId: row.id,
         gameId: game.id,

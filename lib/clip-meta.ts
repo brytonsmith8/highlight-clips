@@ -51,3 +51,35 @@ export const getClipMeta = cache(async (): Promise<Map<string, ClipMeta>> => {
   }
   return out;
 });
+
+/** athlete id -> school, from the optional athletes.school column (migration 0007). Empty when not there yet. */
+export const getAthleteSchools = cache(async (): Promise<Map<string, string>> => {
+  const out = new Map<string, string>();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("athletes").select("id, school");
+    if (error || !data) return out;
+    for (const row of data as { id: string; school: string | null }[]) {
+      if (row.school?.trim()) out.set(row.id, row.school.trim());
+    }
+  } catch {
+    /* column not there yet */
+  }
+  return out;
+});
+
+/** game id -> optional free-text title (games.title, migration 0007). */
+export const getGameTitles = cache(async (): Promise<Map<string, string>> => {
+  const out = new Map<string, string>();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("games").select("id, title");
+    if (error || !data) return out;
+    for (const row of data as { id: string; title: string | null }[]) {
+      if (row.title?.trim()) out.set(row.id, row.title.trim());
+    }
+  } catch {
+    /* column not there yet */
+  }
+  return out;
+});
