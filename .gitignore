@@ -44,3 +44,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local scratch / investigation files (never commit): Cloudflare experiments, audits, preview test output
+/audit-*.json
+/smj.json
+/cf-*
+/ffmpeg-core-report.txt
+/verify-fixes.sh
+/verify-report.txt
+/preview-test-out/
+/brytvision-uncommitted-backup.patch
