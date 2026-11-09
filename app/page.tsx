@@ -56,10 +56,10 @@ export default async function HomePage() {
 
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/games"
+                href="/clips"
                 className="rounded bg-red-600 px-8 py-4 text-center text-sm font-bold uppercase tracking-widest text-white shadow-[0_10px_30px_-10px_rgba(220,38,38,0.8)] transition-colors hover:bg-red-500"
               >
-                Browse games
+                Find your clips
               </Link>
               <Link
                 href="/merch"

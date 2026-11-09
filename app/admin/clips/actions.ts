@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { deleteClipCascade, type MutationResult } from "@/lib/admin/mutations";
+import { isMissingColumnError } from "@/lib/admin/clip-meta";
 import {
   CLIP_ORIGINALS_BUCKET,
   CLIP_PREVIEWS_BUCKET,
@@ -46,10 +47,15 @@ export async function finalizeClip(input: {
   price: number;
   previewPath: string;
   originalPath: string;
-}) {
+  /** Optional: the school this clip is for, and the athlete's jersey number (columns added by migration 0006). */
+  school?: string;
+  jerseyNumber?: string;
+}): Promise<{ metaSaved: boolean }> {
   await requireAdmin();
 
   const { clipId, gameId, athleteId, price, previewPath, originalPath } = input;
+  const school = (input.school ?? "").trim().slice(0, 120) || null;
+  const jerseyNumber = (input.jerseyNumber ?? "").trim().replace(/^#/, "").slice(0, 8) || null;
 
   if (!gameId) throw new Error("A game is required.");
   if (!Number.isFinite(price) || price < 0) {
@@ -100,7 +106,7 @@ export async function finalizeClip(input: {
   }
 
   const supabase = createServiceClient();
-  const { error } = await supabase.from("clips").insert({
+  const baseRow = {
     id: clipId,
     game_id: gameId,
     athlete_id: athleteId || null,
@@ -109,7 +115,16 @@ export async function finalizeClip(input: {
     full_url: originalPath, // object key in clip-originals; resolveClipDownloadUrl signs it
     published: false,
     created_at: new Date().toISOString(),
-  });
+  };
+  let metaSaved = true;
+  let { error } = await supabase
+    .from("clips")
+    .insert((school || jerseyNumber ? { ...baseRow, school, jersey_number: jerseyNumber } : baseRow) as Record<string, unknown>);
+  if (error && (school || jerseyNumber) && isMissingColumnError(error.message)) {
+    // Migration 0006 has not been run yet: still save the clip, just without school / jersey.
+    metaSaved = false;
+    ({ error } = await supabase.from("clips").insert(baseRow));
+  }
 
   if (error) {
     await deleteClipPreview(previewPath);
@@ -118,6 +133,7 @@ export async function finalizeClip(input: {
   }
 
   revalidatePath("/admin/clips");
+  return { metaSaved };
 }
 
 /**

@@ -13,6 +13,8 @@ import { formatGameDate, formatPrice } from "@/lib/format";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { deleteClipAction, setClipPublished } from "@/app/admin/clips/actions";
 import { deleteGameAction } from "@/app/admin/games/actions";
+import { adminClipMetaByIds, adminGameSports } from "@/lib/admin/clip-meta";
+import { updateClipMeta, updateGameDetails } from "@/app/admin/clips/meta-actions";
 
 export const metadata: Metadata = {
   title: "Admin · Game",
@@ -36,6 +38,11 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
   ]);
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
+  const [clipMeta, sports] = await Promise.all([
+    adminClipMetaByIds(clips.map((c) => c.id)),
+    adminGameSports(),
+  ]);
+  const sport = sports.get(game.id) ?? "";
   const totalPurchases = clips.reduce(
     (sum, clip) => sum + (purchaseCounts.get(clip.id) ?? 0),
     0,
@@ -53,7 +60,8 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             {game.school_a} vs {game.school_b}
           </h1>
           <p className="text-sm text-muted">
-            {formatGameDate(game.game_date)} &middot; {game.id}
+            {formatGameDate(game.game_date)}
+            {sport ? ` · ${sport}` : ""} &middot; {game.id}
           </p>
         </div>
         <ConfirmButton
@@ -76,6 +84,46 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
           }
         />
       </div>
+
+      <details className="mt-6 rounded-lg border border-border p-4">
+        <summary className="cursor-pointer font-semibold">Edit game information</summary>
+        <form action={updateGameDetails} className="mt-3 space-y-3">
+          <input type="hidden" name="gameId" value={game.id} />
+          <input
+            name="school_a"
+            defaultValue={game.school_a}
+            required
+            aria-label="Team A"
+            className="w-full rounded border border-border px-3 py-2"
+          />
+          <input
+            name="school_b"
+            defaultValue={game.school_b}
+            required
+            aria-label="Team B"
+            className="w-full rounded border border-border px-3 py-2"
+          />
+          <input
+            name="game_date"
+            type="date"
+            defaultValue={game.game_date}
+            required
+            aria-label="Game date"
+            className="w-full rounded border border-border px-3 py-2"
+          />
+          <input
+            name="sport"
+            defaultValue={sport}
+            placeholder="Sport"
+            aria-label="Sport"
+            className="w-full rounded border border-border px-3 py-2"
+          />
+          <button type="submit" className="rounded bg-accent px-3 py-2 font-medium text-white">
+            Save game information
+          </button>
+          <p className="text-xs text-muted">Clips, purchases and files are not changed.</p>
+        </form>
+      </details>
 
       <div className="mt-6 flex items-center justify-between">
         <h2 className="font-semibold">Clips</h2>
@@ -101,14 +149,42 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             >
               <div className="text-sm">
                 <p className="font-medium">
-                  {athlete ? athlete.name : "No athlete"}
-                  {athlete?.jersey_number ? ` #${athlete.jersey_number}` : ""}
+                  {clipMeta.get(clip.id)?.jersey
+                    ? `#${clipMeta.get(clip.id)?.jersey}`
+                    : athlete
+                      ? `${athlete.name}${athlete.jersey_number ? ` #${athlete.jersey_number}` : ""}`
+                      : "No jersey number"}
+                  {clipMeta.get(clip.id)?.school ? ` · ${clipMeta.get(clip.id)?.school}` : ""}
                 </p>
                 <p className="text-muted">
                   {formatPrice(clip.price)} &middot;{" "}
                   {clip.published ? "Published" : "Unpublished"} &middot;{" "}
                   {purchases} purchase{purchases === 1 ? "" : "s"}
                 </p>
+                <form action={updateClipMeta} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="clipId" value={clip.id} />
+                  <select
+                    name="school"
+                    defaultValue={clipMeta.get(clip.id)?.school ?? ""}
+                    aria-label="School"
+                    className="rounded border border-border px-2 py-1 text-sm"
+                  >
+                    <option value="">School…</option>
+                    <option value={game.school_a}>{game.school_a}</option>
+                    <option value={game.school_b}>{game.school_b}</option>
+                  </select>
+                  <input
+                    name="jersey"
+                    defaultValue={clipMeta.get(clip.id)?.jersey ?? ""}
+                    placeholder="Jersey #"
+                    aria-label="Jersey number"
+                    maxLength={8}
+                    className="w-24 rounded border border-border px-2 py-1 text-sm"
+                  />
+                  <button type="submit" className="rounded border border-border px-2 py-1 text-sm hover:border-accent">
+                    Save
+                  </button>
+                </form>
               </div>
 
               <div className="flex flex-col items-end gap-2">
