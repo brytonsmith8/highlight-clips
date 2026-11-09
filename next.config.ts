@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
       "./public/brand/bryt-vision-logo.png",
     ],
   },
+  /* Order pages carry a private link token in the address (the Checkout Session id for now). Never send that
+     address to any other website: no Referer header at all from these pages. Only these two paths. */
+  async headers() {
+    const noReferrer = [{ key: "Referrer-Policy", value: "no-referrer" }];
+    return [
+      { source: "/order/:path*", headers: noReferrer },
+      { source: "/merch/thanks", headers: noReferrer },
+    ];
+  },
   /* Clip files upload directly from the browser to Supabase Storage
      (signed upload URLs), so no large body passes through a Server Action. */
 };
