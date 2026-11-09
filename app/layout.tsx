@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Barlow_Condensed, Geist } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -11,19 +11,26 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+// Condensed display face for the wordmark and headings.
+const barlowCondensed = Barlow_Condensed({
+  variable: "--font-barlow-condensed",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(publicEnv.siteUrl),
   title: {
-    default: "Bryt Vision Media — Find Your Highlights",
-    template: "%s · Bryt Vision Media",
+    default: "BRYT VISION — All For The Glory Of God",
+    template: "%s · BRYT VISION",
   },
   description:
-    "Browse and buy individual sports highlight clips filmed by Bryt Vision Media. Watch a free preview, purchase the plays you want, and download them in high quality.",
+    "Browse and buy individual sports highlight clips filmed by BRYT VISION. Watch a free preview, purchase the plays you want, and download them in high quality. Shop BRYT VISION compression shirts.",
   openGraph: {
-    title: "Bryt Vision Media — Find Your Highlights",
+    title: "BRYT VISION — All For The Glory Of God",
     description:
-      "Browse and buy individual sports highlight clips filmed by Bryt Vision Media.",
-    siteName: "Bryt Vision Media",
+      "Sports highlight clips and apparel from BRYT VISION.",
+    siteName: "BRYT VISION",
     type: "website",
   },
 };
@@ -36,7 +43,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${barlowCondensed.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <SiteHeader />
         <main className="flex-1">{children}</main>
