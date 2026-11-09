@@ -20,8 +20,11 @@ export function EditDeliveryUpload({ sessionId, delivered }: { sessionId: string
         .storage.from(target.bucket)
         .uploadToSignedUrl(target.path, target.token, file, { contentType: file.type || "video/mp4" });
       if (error) throw new Error(error.message);
-      await finalizeEditDelivery(sessionId, target.path);
-      setMsg("Delivered. The customer's order page now shows a download button.");
+      const r = await finalizeEditDelivery(sessionId, target.path);
+      setMsg(
+        "Delivered. The customer's order page now shows a download button. " +
+          (r.emailed ? "They were emailed." : `No email sent (${r.emailNote ?? "unknown"}).`),
+      );
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Upload failed.");
     } finally {

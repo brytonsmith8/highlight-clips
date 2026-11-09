@@ -3,6 +3,7 @@ import "server-only";
 import type Stripe from "stripe";
 
 import { EDIT_PRICE_CENTS, ADMIN_SETTABLE_STATUSES, type EditStatus } from "@/lib/edit-offer";
+import { sendEditReadyEmail } from "@/lib/email";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -41,6 +42,8 @@ export interface EditOrderRow {
   admin_notes: string | null;
   delivery_path?: string | null;
   delivered_at?: string | null;
+  first_downloaded_at?: string | null;
+  download_count?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -228,14 +231,15 @@ export async function getEditDelivery(
 }
 
 /** Save the finished edit's private storage path and mark the edit as completed. */
-export async function setEditDelivery(sessionId: string, path: string): Promise<{ ok: boolean; message: string }> {
+export async function setEditDelivery(sessionId: string, path: string): Promise<{ ok: boolean; message: string; first?: boolean }> {
   const supabase = createServiceClient();
   const { data: row } = await supabase
     .from("edit_orders")
-    .select("status")
+    .select("status, delivery_path")
     .eq("stripe_session_id", sessionId)
     .maybeSingle();
   if (!row) return { ok: false, message: "Order not found." };
+  const first = !(row as { delivery_path: string | null }).delivery_path;
   const status = (row as { status: string }).status;
   const patch: Record<string, unknown> = {
     delivery_path: path,
@@ -246,5 +250,54 @@ export async function setEditDelivery(sessionId: string, path: string): Promise<
   if (status === "paid_editing_needed" || status === "editing_in_progress") patch.status = "edit_completed";
   const { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);
   if (error) return { ok: false, message: error.message };
-  return { ok: true, message: "Edit delivered." };
+  return { ok: true, message: "Edit delivered.", first };
+}
+
+/**
+ * Tell the customer their finished edit is ready. Only for a PAID order with a delivered file, and only the
+ * first time (re-uploading a replacement does not email again). Never throws: the delivery itself already succeeded.
+ */
+export async function notifyEditReady(sessionId: string): Promise<{ sent: boolean; reason?: string }> {
+  try {
+    const { data } = await createServiceClient()
+      .from("edit_orders")
+      .select("customer_email, athlete_name, athlete_jersey, payment_status, delivery_path")
+      .eq("stripe_session_id", sessionId)
+      .maybeSingle();
+    const d = data as {
+      customer_email: string | null; athlete_name: string | null; athlete_jersey: string | null;
+      payment_status: string; delivery_path: string | null;
+    } | null;
+    if (!d || d.payment_status !== "paid" || !d.delivery_path) return { sent: false, reason: "not deliverable" };
+    if (!d.customer_email) return { sent: false, reason: "no customer email on the order" };
+    const label = [d.athlete_jersey ? `#${d.athlete_jersey}` : "", d.athlete_name ?? ""].filter(Boolean).join(" ") || null;
+    await sendEditReadyEmail({ to: d.customer_email, token: sessionId, athleteLabel: label });
+    return { sent: true };
+  } catch (e) {
+    console.error("[edit orders] ready email failed:", e);
+    return { sent: false, reason: "email failed" };
+  }
+}
+
+/** Count a download of the finished edit (best effort; never blocks the download). */
+export async function recordEditDownload(sessionId: string): Promise<void> {
+  try {
+    const supabase = createServiceClient();
+    const { data } = await supabase
+      .from("edit_orders")
+      .select("download_count, first_downloaded_at")
+      .eq("stripe_session_id", sessionId)
+      .maybeSingle();
+    if (!data) return;
+    const d = data as { download_count: number | null; first_downloaded_at: string | null };
+    await supabase
+      .from("edit_orders")
+      .update({
+        download_count: (d.download_count ?? 0) + 1,
+        first_downloaded_at: d.first_downloaded_at ?? new Date().toISOString(),
+      })
+      .eq("stripe_session_id", sessionId);
+  } catch {
+    /* tracking is optional */
+  }
 }

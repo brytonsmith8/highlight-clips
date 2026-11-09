@@ -48,7 +48,7 @@ export async function deleteClipCascade(
   if (purchaseCount > 0 && !opts.force) {
     return {
       ok: false,
-      message: `Blocked: this clip has ${purchaseCount} purchase(s). Unpublish it instead, or use Force delete to also erase those ${purchaseCount} purchase record(s) and their downloads.`,
+      message: `Blocked: this clip has ${purchaseCount} purchase(s). Customers paid for it, so it is protected. Unpublish it instead (customers keep their downloads).`,
     };
   }
 
@@ -113,7 +113,7 @@ export async function deleteGameCascade(
   if (purchaseCount > 0 && !opts.force) {
     return {
       ok: false,
-      message: `Blocked: ${clipRows.length} clip(s) under "${game.school_a} vs ${game.school_b}" have ${purchaseCount} purchase(s) between them. Use Force delete to erase the clips, their files, and those ${purchaseCount} purchase record(s).`,
+      message: `Blocked: ${clipRows.length} clip(s) under "${game.school_a} vs ${game.school_b}" have ${purchaseCount} purchase(s) between them. Customers paid for them, so the game is protected. Unpublish the clips instead (customers keep their downloads).`,
     };
   }
 

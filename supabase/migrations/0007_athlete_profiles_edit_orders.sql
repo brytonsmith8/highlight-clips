@@ -14,11 +14,6 @@ alter table public.games add column if not exists title text;
 grant select (school, sport) on public.athletes to anon, authenticated;
 grant select (title)         on public.games    to anon, authenticated;
 
--- 2b) Admin-only "test footage" flag on clips. NOT granted to anon/authenticated, so it can never be read publicly.
---     Default false: every existing clip stays exactly as it is until you mark it. Nothing is unpublished or deleted.
-alter table public.clips add column if not exists is_test boolean not null default false;
-revoke select (is_test) on public.clips from anon, authenticated;
-
 -- 3) BRYT VISION EDIT + FREE SHIRT orders. One row per paid Stripe Checkout Session.
 --    PRIVATE: row level security is on and there are NO policies, and anon/authenticated have no grants.
 --    Only the server (service role) can read or write it, so customer addresses can never be queried publicly.
@@ -52,6 +47,8 @@ create table if not exists public.edit_orders (
   admin_notes         text,
   delivery_path       text,                                      -- private storage path of the finished edit video
   delivered_at        timestamptz,
+  first_downloaded_at timestamptz,                           -- set when the customer first downloads the finished edit
+  download_count      integer     not null default 0,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );

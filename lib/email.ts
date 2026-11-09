@@ -116,6 +116,30 @@ export async function sendOrderConfirmationEmail(params: {
   }
 }
 
+/** Sent once, when the finished BRYT VISION EDIT video has been uploaded and is ready to download. */
+export async function sendEditReadyEmail(params: {
+  to: string;
+  token: string;
+  athleteLabel?: string | null;
+}): Promise<void> {
+  const resend = new Resend(requireResendApiKey());
+  const orderUrl = `${publicEnv.siteUrl}/order/${params.token}`;
+  const html = `
+    <h2 style="margin:0 0 12px;">YOUR BRYT VISION EDIT IS READY</h2>
+    <p>${params.athleteLabel ? `The highlight video for ${escapeEmailHtml(params.athleteLabel)} is` : "Your highlight video is"} finished and ready to download.</p>
+    <p><a href="${orderUrl}">Open your order page to download it</a></p>
+    <p>The download is available for 30 days, so please save it soon.</p>
+    <p><strong>ALL FOR THE GLORY OF GOD.</strong></p>
+  `;
+  const { error } = await resend.emails.send({
+    from: requireEmailFrom(),
+    to: params.to,
+    subject: "Your BRYT VISION EDIT is ready to download",
+    html,
+  });
+  if (error) throw new Error(`Failed to send edit-ready email: ${error.message}`);
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

@@ -24,13 +24,6 @@ export default async function AdminDashboard() {
             Sign out
           </button>
         </form>
-        <Link
-          href="/admin/launch"
-          className="rounded-lg border border-border p-4 transition-colors hover:border-accent"
-        >
-          <p className="font-semibold">Launch</p>
-          <p className="text-sm text-muted">Checklist, mark test clips</p>
-        </Link>
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">

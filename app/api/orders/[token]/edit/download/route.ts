@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isEditDeliveryExpired, isValidSessionId, signedEditDownloadUrl } from "@/lib/edit-delivery";
-import { getEditDelivery } from "@/lib/edit-orders";
+import { getEditDelivery, recordEditDownload } from "@/lib/edit-orders";
 
 interface Params {
   params: Promise<{ token: string }>;
@@ -18,5 +18,6 @@ export async function GET(_req: Request, { params }: Params) {
   }
   const url = await signedEditDownloadUrl(d.path);
   if (!url) return NextResponse.json({ error: "File unavailable." }, { status: 404 });
+  await recordEditDownload(token);
   return NextResponse.redirect(url);
 }

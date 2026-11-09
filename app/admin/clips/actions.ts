@@ -218,7 +218,8 @@ export async function deleteClipAction(
   if (!clipId) return { ok: false, message: "Missing clip id." };
 
   const result = await deleteClipCascade(clipId, {
-    force: formData.get("force") === "1",
+    // Clips/games that customers have paid for are protected: the admin UI can never force-delete them.
+    force: false,
   });
 
   if (result.ok) revalidatePath("/", "layout");

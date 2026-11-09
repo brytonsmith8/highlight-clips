@@ -13,7 +13,6 @@ import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
 import { updateClipMeta } from "./meta-actions";
 import { NewClipForm } from "@/components/admin/new-clip-form";
 import { ConfirmButton } from "@/components/admin/confirm-button";
-import { adminTestClipIds } from "@/lib/admin/test-clips";
 import { deleteClipAction, setClipPublished } from "./actions";
 
 export const metadata: Metadata = {
@@ -32,7 +31,6 @@ export default async function AdminClipsPage() {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
-  const testIds = await adminTestClipIds();
   const [clipMeta, metaReady, athleteMeta] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     metaColumnsReady(),
@@ -87,7 +85,6 @@ export default async function AdminClipsPage() {
                   {clipMeta.get(clip.id)?.jersey ? ` · #${clipMeta.get(clip.id)?.jersey}` : ""}
                   {clipMeta.get(clip.id)?.school ? ` · ${clipMeta.get(clip.id)?.school}` : ""}
                   {athlete ? ` · ${athlete.name}` : ""}
-                  {testIds.has(clip.id) && <b className="ml-2 rounded bg-yellow-400 px-1 text-xs text-black">TEST</b>}
                 </p>
                 <p className="text-muted">
                   {formatPrice(clip.price)} &middot;{" "}
@@ -175,17 +172,9 @@ export default async function AdminClipsPage() {
                     )}\nNo purchases, so nothing else is affected.`}
                   />
                 ) : (
-                  <ConfirmButton
-                    action={deleteClipAction}
-                    fields={{ clipId: clip.id, force: "1" }}
-                    label="Force delete"
-                    confirmLabel={`Delete clip + ${purchases} purchase${
-                      purchases === 1 ? "" : "s"
-                    }`}
-                    confirmPrompt={`This clip has ${purchases} purchase${
-                      purchases === 1 ? "" : "s"
-                    }. Force delete removes the clip, its files, AND those ${purchases} purchase record(s) — those customers lose their download. Prefer Unpublish unless this is test data.`}
-                  />
+                  <p className="max-w-[11rem] text-right text-xs text-muted">
+                    Protected: {purchases} purchase{purchases === 1 ? "" : "s"}. Unpublish instead; buyers keep their downloads.
+                  </p>
                 )}
               </div>
             </div>

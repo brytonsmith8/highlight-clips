@@ -67,25 +67,20 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             {sport ? ` · ${sport}` : ""} &middot; {game.id}
           </p>
         </div>
-        <ConfirmButton
-          action={deleteGameAction}
-          fields={
-            totalPurchases > 0
-              ? { gameId: game.id, force: "1" }
-              : { gameId: game.id }
-          }
-          label="Delete game"
-          confirmLabel={
-            totalPurchases > 0
-              ? `Delete game + ${clips.length} clip(s) + ${totalPurchases} purchase(s)`
-              : `Delete game + ${clips.length} clip(s)`
-          }
-          confirmPrompt={
-            totalPurchases > 0
-              ? `Force delete "${game.school_a} vs ${game.school_b}": removes ${clips.length} clip(s), their files, AND ${totalPurchases} purchase record(s). Those customers lose their downloads. Cannot be undone.`
-              : `Delete "${game.school_a} vs ${game.school_b}" and its ${clips.length} clip(s) + files. No purchases, so nothing else is affected.`
-          }
-        />
+        {totalPurchases > 0 ? (
+          <p className="max-w-xs rounded border border-border p-2 text-xs text-muted">
+            Protected: customers bought {totalPurchases} clip(s) from this game, so it can&apos;t be deleted. Unpublish
+            its clips instead; buyers keep their downloads.
+          </p>
+        ) : (
+          <ConfirmButton
+            action={deleteGameAction}
+            fields={{ gameId: game.id }}
+            label="Delete game"
+            confirmLabel={`Delete game + ${clips.length} clip(s)`}
+            confirmPrompt={`Delete "${game.school_a} vs ${game.school_b}" and its ${clips.length} clip(s) + files. No purchases, so nothing else is affected.`}
+          />
+        )}
       </div>
 
       <details className="mt-6 rounded-lg border border-border p-4">
@@ -246,17 +241,9 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
                     confirmPrompt={`Delete this clip and its files from storage? No purchases, so nothing else is affected.`}
                   />
                 ) : (
-                  <ConfirmButton
-                    action={deleteClipAction}
-                    fields={{ clipId: clip.id, force: "1" }}
-                    label="Force delete"
-                    confirmLabel={`Delete clip + ${purchases} purchase${
-                      purchases === 1 ? "" : "s"
-                    }`}
-                    confirmPrompt={`This clip has ${purchases} purchase${
-                      purchases === 1 ? "" : "s"
-                    }. Force delete also erases those purchase record(s) and their downloads. Prefer Unpublish unless this is test data.`}
-                  />
+                  <p className="max-w-[11rem] text-right text-xs text-muted">
+                    Protected: {purchases} purchase{purchases === 1 ? "" : "s"}. Unpublish instead.
+                  </p>
                 )}
               </div>
             </div>

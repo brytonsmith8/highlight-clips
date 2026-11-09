@@ -134,6 +134,14 @@ export default async function AdminOrdersPage() {
                     </button>
                     <span className="font-mono text-[10px] text-muted">{e.stripe_session_id}</span>
                   </form>
+                  <p className="mt-2 text-xs text-muted">
+                    Payment: {e.payment_status} &middot; Delivery:{" "}
+                    {e.delivery_path
+                      ? `delivered ${new Date(e.delivered_at ?? e.created_at).toLocaleString("en-US")}`
+                      : "not delivered yet"}
+                    {e.delivery_path &&
+                      ` · ${e.first_downloaded_at ? `customer downloaded ${e.download_count ?? 1}× (first ${new Date(e.first_downloaded_at).toLocaleString("en-US")})` : "not downloaded yet"}`}
+                  </p>
                   <EditDeliveryUpload sessionId={e.stripe_session_id} delivered={!!e.delivery_path} />
                 </div>
               ))}
