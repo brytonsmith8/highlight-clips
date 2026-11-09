@@ -59,10 +59,7 @@ export async function deleteGameAction(
   const gameId = String(formData.get("gameId") ?? "");
   if (!gameId) return { ok: false, message: "Missing game id." };
 
-  const result = await deleteGameCascade(gameId, {
-    // Clips/games that customers have paid for are protected: the admin UI can never force-delete them.
-    force: false,
-  });
+  const result = await deleteGameCascade(gameId);
 
   if (result.ok) revalidatePath("/", "layout");
   return result;
