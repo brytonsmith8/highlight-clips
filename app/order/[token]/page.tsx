@@ -99,6 +99,14 @@ export default async function OrderPage({ params }: OrderPageProps) {
             checkout.
           </p>
           <p className="mt-2 text-sm font-semibold">Status: {editStatusLabel(editOrder.status)}</p>
+          {editOrder.delivered && (
+            <a
+              href={`/api/orders/${token}/edit/download`}
+              className="mt-3 inline-block rounded bg-red-600 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white"
+            >
+              Download your finished edit
+            </a>
+          )}
           <p className="mt-2 text-xs text-white/60">
             Your selected clips below are yours to download right now. Questions? Reply to your confirmation email.
           </p>

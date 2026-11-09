@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/format";
 import { listEditOrders } from "@/lib/edit-orders";
 import { ADMIN_SETTABLE_STATUSES, EDIT_STATUSES, editStatusLabel } from "@/lib/edit-offer";
 import { setEditStatusAction } from "./edit-actions";
+import { EditDeliveryUpload } from "@/components/admin/edit-delivery-upload";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import {
   deleteOrderAction,
@@ -133,6 +134,7 @@ export default async function AdminOrdersPage() {
                     </button>
                     <span className="font-mono text-[10px] text-muted">{e.stripe_session_id}</span>
                   </form>
+                  <EditDeliveryUpload sessionId={e.stripe_session_id} delivered={!!e.delivery_path} />
                 </div>
               ))}
           </div>

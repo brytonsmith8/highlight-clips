@@ -44,6 +44,8 @@ export async function sendOrderConfirmationEmail(params: {
   /** The one Scripture saved with this order (KJV). */
   scripture?: { reference: string; text: string };
   totalDollars?: number;
+  /** Present only for orders that include the BRYT VISION EDIT + FREE SHIRT add-on. */
+  edit?: { size: string; color: string; sleeve?: string | null; athleteLabel?: string | null };
 }): Promise<void> {
   const resend = new Resend(requireResendApiKey());
   const orderUrl = `${publicEnv.siteUrl}/order/${params.token}`;
@@ -72,6 +74,17 @@ export async function sendOrderConfirmationEmail(params: {
     </div>`
     : "";
 
+  const editBlock = params.edit
+    ? `
+    <div style="margin:24px 0;padding:20px;background:#000000;border:2px solid #dc2626;border-radius:12px;color:#ffffff;">
+      <p style="margin:0 0 8px;font-size:18px;font-weight:bold;letter-spacing:1px;">YOUR BRYT VISION EDIT + <span style="color:#ef4444;">FREE SHIRT</span> IS CONFIRMED</p>
+      ${params.edit.athleteLabel ? `<p style="margin:0 0 8px;">Athlete: ${escapeEmailHtml(params.edit.athleteLabel)}</p>` : ""}
+      <p style="margin:0 0 8px;">Free one-sleeve compression shirt: ${escapeEmailHtml(params.edit.color)}, size ${escapeEmailHtml(params.edit.size)}${params.edit.sleeve ? `, ${escapeEmailHtml(params.edit.sleeve)} sleeve` : ""}.</p>
+      <p style="margin:0 0 8px;"><strong>What happens next:</strong> we edit your highlight video (about 5&ndash;7 days, sometimes sooner), then ship your shirt to the address you entered at checkout. We will email you when your finished edit is ready &mdash; you can also check your order page anytime.</p>
+      <p style="margin:0;">The clips you picked are listed below and are yours to download right now.</p>
+    </div>`
+    : "";
+
   const html = `
     <h2 style="margin:0 0 12px;">THANK YOU FOR SUPPORTING BRYTVISION!</h2>
     <p>Your support means more than you know. BrytVision is built on faith, purpose, and the belief that the gifts and talents God has given us should be used for His glory.</p>
@@ -81,6 +94,7 @@ export async function sendOrderConfirmationEmail(params: {
     <p>Thank you for being part of the BrytVision family. May God continue to bless you, guide your steps, and give you strength in everything you do.</p>
     <p><strong>ALL FOR THE GLORY OF GOD.</strong></p>
     <hr>
+    ${editBlock}
     <p>Your highlight clip${params.clips.length > 1 ? "s are" : " is"} ready to download here:</p>
     <p><a href="${orderUrl}">${orderUrl}</a></p>
     <ul>${clipLines}</ul>

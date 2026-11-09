@@ -39,6 +39,8 @@ export interface EditOrderRow {
   shirt_sleeve: string | null;
   clips: EditClipSnapshot[];
   admin_notes: string | null;
+  delivery_path?: string | null;
+  delivered_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -169,6 +171,7 @@ export async function getEditOrderPublic(token: string): Promise<{
   shirtSleeve: string | null;
   athleteJersey: string | null;
   athleteName: string | null;
+  delivered: boolean;
 } | null> {
   const { data, error } = await createServiceClient()
     .from("edit_orders")
@@ -177,7 +180,15 @@ export async function getEditOrderPublic(token: string): Promise<{
     .maybeSingle();
   if (error || !data) return null;
   const d = data as Record<string, string | null>;
+  // Delivery columns come from migration 0007 too, but read separately so an old schema can't hide the order.
+  const dl = await createServiceClient()
+    .from("edit_orders")
+    .select("delivery_path")
+    .eq("stripe_session_id", token)
+    .maybeSingle();
+  const delivered = !dl.error && !!(dl.data as { delivery_path: string | null } | null)?.delivery_path;
   return {
+    delivered,
     status: d.status ?? "paid_editing_needed",
     shirtSize: d.shirt_size,
     shirtColor: d.shirt_color,
@@ -199,4 +210,41 @@ export async function setEditOrderStatus(sessionId: string, status: string): Pro
   if (error) return { ok: false, message: error.message };
   if (!data || data.length === 0) return { ok: false, message: "Order not found." };
   return { ok: true, message: "Status updated." };
+}
+
+/** Private delivery info for a PAID edit order (server-only; never sent to the browser as-is). */
+export async function getEditDelivery(
+  sessionId: string,
+): Promise<{ path: string; deliveredAt: string | null } | null> {
+  const { data, error } = await createServiceClient()
+    .from("edit_orders")
+    .select("delivery_path, delivered_at, payment_status")
+    .eq("stripe_session_id", sessionId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const d = data as { delivery_path: string | null; delivered_at: string | null; payment_status: string };
+  if (d.payment_status !== "paid" || !d.delivery_path) return null;
+  return { path: d.delivery_path, deliveredAt: d.delivered_at };
+}
+
+/** Save the finished edit's private storage path and mark the edit as completed. */
+export async function setEditDelivery(sessionId: string, path: string): Promise<{ ok: boolean; message: string }> {
+  const supabase = createServiceClient();
+  const { data: row } = await supabase
+    .from("edit_orders")
+    .select("status")
+    .eq("stripe_session_id", sessionId)
+    .maybeSingle();
+  if (!row) return { ok: false, message: "Order not found." };
+  const status = (row as { status: string }).status;
+  const patch: Record<string, unknown> = {
+    delivery_path: path,
+    delivered_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  // Only move forward: never pull a shipped/fulfilled order back to "edit completed".
+  if (status === "paid_editing_needed" || status === "editing_in_progress") patch.status = "edit_completed";
+  const { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, message: "Edit delivered." };
 }

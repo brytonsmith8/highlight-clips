@@ -138,6 +138,22 @@ async function recordClipsOnly(session: Stripe.Checkout.Session): Promise<Record
         (gameRows ?? []).map((g: { id: string; school_a: string; school_b: string }) => [g.id, g]),
       );
       const clipGame = new Map((clips ?? []).map((c: { id: string; game_id: string }) => [c.id, gameById.get(c.game_id)]));
+      let edit: { size: string; color: string; sleeve: string | null; athleteLabel: string | null } | undefined;
+      if (session.metadata?.edit === "1") {
+        let athleteLabel: string | null = null;
+        const aid = session.metadata?.edit_athlete_id;
+        if (aid) {
+          const { data: a } = await supabase.from("athletes").select("name, jersey_number").eq("id", aid).maybeSingle();
+          const ar = a as { name: string | null; jersey_number: string | null } | null;
+          if (ar) athleteLabel = [ar.jersey_number ? `#${ar.jersey_number}` : "", ar.name ?? ""].filter(Boolean).join(" ") || null;
+        }
+        edit = {
+          size: session.metadata?.edit_size ?? "",
+          color: session.metadata?.edit_color ?? "",
+          sleeve: session.metadata?.edit_sleeve ?? null,
+          athleteLabel,
+        };
+      }
       await sendOrderConfirmationEmail({
         to: buyerEmail,
         token: session.id,
@@ -148,6 +164,7 @@ async function recordClipsOnly(session: Stripe.Checkout.Session): Promise<Record
         expiresAt: computeDownloadExpiry(purchasedAt),
         scripture: { reference: scripture.reference, text: scripture.text },
         totalDollars: typeof session.amount_total === "number" ? session.amount_total / 100 : undefined,
+        edit,
       });
     } catch (emailError) {
       // The purchase is recorded either way; an email failure must not fail the order.

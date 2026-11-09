@@ -13,6 +13,7 @@ import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
 import { updateClipMeta } from "./meta-actions";
 import { NewClipForm } from "@/components/admin/new-clip-form";
 import { ConfirmButton } from "@/components/admin/confirm-button";
+import { adminTestClipIds } from "@/lib/admin/test-clips";
 import { deleteClipAction, setClipPublished } from "./actions";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default async function AdminClipsPage() {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
+  const testIds = await adminTestClipIds();
   const [clipMeta, metaReady, athleteMeta] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     metaColumnsReady(),
@@ -85,6 +87,7 @@ export default async function AdminClipsPage() {
                   {clipMeta.get(clip.id)?.jersey ? ` · #${clipMeta.get(clip.id)?.jersey}` : ""}
                   {clipMeta.get(clip.id)?.school ? ` · ${clipMeta.get(clip.id)?.school}` : ""}
                   {athlete ? ` · ${athlete.name}` : ""}
+                  {testIds.has(clip.id) && <b className="ml-2 rounded bg-yellow-400 px-1 text-xs text-black">TEST</b>}
                 </p>
                 <p className="text-muted">
                   {formatPrice(clip.price)} &middot;{" "}

@@ -289,16 +289,19 @@ export function CartSummary() {
   const offer = (
     <section
       aria-label="BRYT VISION EDIT offer"
-      className="mt-3 rounded-lg border border-red-600 bg-black p-3 text-white"
+      className="mt-2 rounded-lg border border-red-600 bg-black p-2 text-white sm:p-3"
       data-testid="edit-offer"
     >
-      <p className="font-display text-lg font-extrabold uppercase leading-none tracking-wide">
+      <p className="font-display text-base font-extrabold uppercase leading-tight tracking-wide sm:text-lg">
         Got {EDIT_MIN_CLIPS}+ highlights? <span className="text-red-500">Add a {formatCents(EDIT_PRICE_CENTS)} BRYT VISION EDIT + FREE shirt</span>
       </p>
-      <p className="mt-1 text-xs text-white/75">
-        A professionally edited highlight video (about 10–35+ seconds, full resolution, ready in about 5–7 days)
-        and a FREE one-sleeve compression shirt.
-      </p>
+      <details className="mt-1 text-xs text-white/75">
+        <summary className="cursor-pointer text-white/90 underline underline-offset-2">What&apos;s included</summary>
+        <p className="mt-1">
+          A professionally edited highlight video (about 10–35+ seconds, full resolution, ready in about 5–7 days)
+          and a FREE one-sleeve compression shirt.
+        </p>
+      </details>
 
       {editActive ? (
         <div className="mt-3 space-y-2" data-testid="edit-added">
