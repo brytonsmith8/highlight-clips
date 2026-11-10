@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CartLink } from "@/components/merch/cart-link";
 
 const NAV = [
-  { href: "/games", label: "Games" },
+  { href: "/clips", label: "Find Clips" },
   { href: "/merch", label: "Merch" },
 ] as const;
 

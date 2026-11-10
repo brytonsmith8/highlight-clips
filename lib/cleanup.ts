@@ -3,6 +3,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 import { CLIP_ORIGINALS_BUCKET } from "@/lib/storage";
 import { DOWNLOAD_WINDOW_HOURS } from "@/lib/orders";
+import { isMissingRelationError } from "@/lib/order-access";
 
 /**
  * Scheduled cleanup of full-quality originals nobody needs any more.
@@ -11,7 +12,9 @@ import { DOWNLOAD_WINDOW_HOURS } from "@/lib/orders";
  *   1. the clip is unpublished (not for sale), and
  *   2. it was sold at least once (a brand-new, never-sold upload is never touched), and
  *   3. every buyer's download window ended more than CLEANUP_GRACE_HOURS ago, and
- *   4. its `full_url` is a file in our private bucket (external links are left alone).
+ *   4. its `full_url` is a file in our private bucket (external links are left alone), and
+ *   5. it is NOT source footage for a paid BRYT VISION EDIT that is still unfinished (the customer's 72-hour clip
+ *      window is shorter than the 5-7 day edit). If that cannot be checked, NOTHING is deleted.
  *
  * It never deletes purchase records (orders are kept permanently), never touches published clips,
  * and never reacts to a preview or a signed link expiring. Conditions are re-checked immediately
@@ -26,9 +29,65 @@ export const CLEANUP_BATCH = 25;
 
 const HOUR_MS = 3600 * 1000;
 
+const UNFINISHED_EDIT_STATUSES = ["paid_editing_needed", "editing_in_progress"];
+
+/**
+ * Clip ids that are still needed as source footage: every clip of a PAID BRYT VISION EDIT order whose edit is not
+ * finished. Combines the order's clip snapshot AND the clips actually purchased under that order, so a malformed
+ * snapshot cannot hide a clip. Orders that were fully refunded or whose dispute was lost no longer need protection;
+ * an OPEN dispute keeps it (footage is kept while unresolved).
+ *
+ * THROWS if anything cannot be read (except "edit_orders table does not exist yet", which means no EDIT orders
+ * exist). Callers treat a throw as "delete nothing".
+ */
+export async function loadClipsNeededForEdits(): Promise<Set<string>> {
+  const supabase = createServiceClient();
+  const needed = new Set<string>();
+
+  const { data: orders, error } = await supabase
+    .from("edit_orders")
+    .select("stripe_session_id, clips")
+    .eq("payment_status", "paid")
+    .in("status", UNFINISHED_EDIT_STATUSES);
+  if (error) {
+    if (isMissingRelationError(error)) return needed;
+    throw new Error(`edit order lookup failed: ${error.message}`);
+  }
+  const rows = (orders ?? []) as { stripe_session_id: string; clips: { clipId?: string }[] | null }[];
+  if (rows.length === 0) return needed;
+
+  // Orders that no longer need their footage (full refund / lost dispute).
+  const released = new Set<string>();
+  const flags = await supabase
+    .from("order_access_flags")
+    .select("stripe_session_id, refund_status, dispute_status")
+    .in("stripe_session_id", rows.map((r) => r.stripe_session_id));
+  if (flags.error) {
+    if (!isMissingRelationError(flags.error)) throw new Error(`order access lookup failed: ${flags.error.message}`);
+  } else {
+    for (const f of (flags.data ?? []) as { stripe_session_id: string; refund_status: string; dispute_status: string }[]) {
+      if (f.refund_status === "full" || f.dispute_status === "lost") released.add(f.stripe_session_id);
+    }
+  }
+
+  const active = rows.filter((r) => !released.has(r.stripe_session_id));
+  for (const r of active) {
+    for (const c of Array.isArray(r.clips) ? r.clips : []) if (c?.clipId) needed.add(c.clipId);
+  }
+  if (active.length > 0) {
+    const { data: bought, error: boughtError } = await supabase
+      .from("purchases")
+      .select("clip_id")
+      .in("stripe_payment_id", active.map((r) => r.stripe_session_id));
+    if (boughtError) throw new Error(`purchase lookup failed: ${boughtError.message}`);
+    for (const p of (bought ?? []) as { clip_id: string }[]) needed.add(p.clip_id);
+  }
+  return needed;
+}
+
 export interface CleanupItem {
   clipId: string;
-  outcome: "removed" | "would-remove" | "failed";
+  outcome: "removed" | "would-remove" | "failed" | "kept";
   detail?: string;
 }
 
@@ -81,6 +140,10 @@ export async function cleanupExpiredOriginals(
   const supabase = createServiceClient();
   const report: CleanupReport = { dryRun, checked: 0, removed: 0, failed: 0, items: [] };
 
+  // Source footage for unfinished paid EDIT orders is never removed. If this cannot be determined, the whole
+  // run stops before touching anything (the cron route answers 500 and tries again tomorrow).
+  const neededForEdits = await loadClipsNeededForEdits();
+
   const { data: candidates, error } = await supabase
     .from("clips")
     .select("id, full_url")
@@ -100,6 +163,10 @@ export async function cleanupExpiredOriginals(
       .eq("full_url", key);
     if ((sharing ?? 0) > 1) continue;
 
+    if (neededForEdits.has(clip.id)) {
+      report.items.push({ clipId: clip.id, outcome: "kept", detail: "source footage for an unfinished paid EDIT" });
+      continue;
+    }
     if (!(await eligible(clip.id, key, now))) continue;
     report.checked++;
 
@@ -108,7 +175,8 @@ export async function cleanupExpiredOriginals(
       continue;
     }
 
-    // Re-check right before deleting.
+    // Re-check right before deleting (including a fresh read of the EDIT protection; a failed read aborts the run).
+    if ((await loadClipsNeededForEdits()).has(clip.id)) continue;
     if (!(await eligible(clip.id, key, now))) continue;
 
     const { error: removeError } = await supabase.storage

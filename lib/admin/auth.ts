@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -13,9 +15,14 @@ function requireAdminPassword(): string {
   return password;
 }
 
-/** Plain comparison is acceptable here: single shared password, no user table, low-value target. */
+/**
+ * Constant-time comparison. Both sides are hashed to the same length first, so neither the content nor the
+ * length of the real password can be learned from response timing.
+ */
 export function checkAdminPassword(candidate: string): boolean {
-  return candidate === requireAdminPassword();
+  const expected = createHash("sha256").update(requireAdminPassword()).digest();
+  const given = createHash("sha256").update(candidate).digest();
+  return timingSafeEqual(expected, given);
 }
 
 /** True if the current request carries a valid, unexpired admin session cookie. */

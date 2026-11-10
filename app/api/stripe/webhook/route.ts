@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { getStripeClient, requireStripeWebhookSecret } from "@/lib/stripe";
 import { recordClipPurchase } from "@/lib/clip-orders";
 import { handleMerchCheckoutCompleted } from "@/lib/merch-order";
+import { handleChargeRefunded, handleDispute } from "@/lib/order-access";
 
 /**
  * Records a purchase after a completed Stripe Checkout and emails the
@@ -37,6 +38,28 @@ export async function POST(request: Request) {
       { error: `Webhook signature verification failed: ${message}` },
       { status: 400 },
     );
+  }
+
+  // Refunds and disputes: suspend / restore / flag access for the matching clip order. Anything that is not
+  // one of our clip orders (merchandise, unknown payments) is acknowledged and ignored. A database or Stripe
+  // lookup failure answers 500 so Stripe retries the event.
+  if (
+    event.type === "charge.refunded" ||
+    event.type === "charge.dispute.created" ||
+    event.type === "charge.dispute.closed"
+  ) {
+    try {
+      const outcome =
+        event.type === "charge.refunded"
+          ? await handleChargeRefunded(stripe, event.data.object as Stripe.Charge)
+          : await handleDispute(stripe, event.data.object as Stripe.Dispute, event.type);
+      console.log("[stripe webhook]", event.type, outcome.handled ? "applied:" : "ignored:", outcome.detail);
+      return NextResponse.json({ received: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not process event.";
+      console.error("[stripe webhook] failed to process", event.type, message);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   }
 
   if (

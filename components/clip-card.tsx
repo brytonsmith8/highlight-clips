@@ -14,11 +14,22 @@ import { BuyButton } from "@/components/buy-button";
  * `preview_url` is a plain public URL column in this schema (no signed-URL step
  * for previews). `full_url` (the original) is never fetched or rendered here.
  */
-export async function ClipCard({ clip }: { clip: ClipWithAthlete }) {
+export async function ClipCard({
+  clip,
+  jersey,
+  school,
+}: {
+  clip: ClipWithAthlete;
+  /** Jersey number / school set on the clip itself (migration 0006); shown when there is no athlete record. */
+  jersey?: string | null;
+  school?: string | null;
+}) {
   const showPreview = await checkPreviewPublic(clip.preview_url);
   const label = clip.athlete
     ? `${clip.athlete.name}${clip.athlete.jersey_number ? ` #${clip.athlete.jersey_number}` : ""}`
-    : "Unlabeled clip";
+    : jersey
+      ? `#${jersey}${school ? ` ${school}` : ""}`
+      : "Unlabeled clip";
 
   return (
     <div className="rounded-lg border border-border p-3 transition-colors hover:border-accent">
@@ -50,6 +61,11 @@ export async function ClipCard({ clip }: { clip: ClipWithAthlete }) {
                 {clip.athlete.jersey_number
                   ? ` · #${clip.athlete.jersey_number}`
                   : ""}
+              </>
+            ) : jersey ? (
+              <>
+                #{jersey}
+                {school ? <span className="text-muted"> · {school}</span> : null}
               </>
             ) : (
               <span className="text-muted">Unlabeled clip</span>

@@ -13,7 +13,7 @@ import { DOWNLOAD_WINDOW_HOURS } from "@/lib/orders";
  * The production schema has **no foreign keys** between games / athletes /
  * clips / purchases, so nothing here can lean on ON DELETE behaviour — every
  * relationship is walked explicitly, and anything that would strand a paying
- * customer is blocked unless `force` is passed.
+ * customer is blocked outright (there is no force option).
  */
 
 export type MutationResult = { ok: boolean; message: string };
@@ -24,11 +24,9 @@ function expiryLabel(from: Date): string {
   ).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** Delete one clip. Blocked when it has purchases unless `force` (which then
- * also deletes those purchase rows). Removes the stored preview + original. */
+/** Delete one clip. Blocked when it has purchases. Removes only this clip's stored preview + original. */
 export async function deleteClipCascade(
   clipId: string,
-  opts: { force?: boolean } = {},
 ): Promise<MutationResult> {
   const supabase = createServiceClient();
 
@@ -39,29 +37,21 @@ export async function deleteClipCascade(
     .maybeSingle();
   if (!clip) return { ok: false, message: "Clip not found — it may already be deleted." };
 
-  const { count } = await supabase
+  const { count, error: countError } = await supabase
     .from("purchases")
     .select("id", { count: "exact", head: true })
     .eq("clip_id", clipId);
-  const purchaseCount = count ?? 0;
+  // Fail closed: if we cannot prove the clip is unsold, we do not delete it.
+  if (countError || count === null) {
+    return { ok: false, message: "Could not check whether customers bought this clip, so nothing was deleted. Try again." };
+  }
+  const purchaseCount = count;
 
-  if (purchaseCount > 0 && !opts.force) {
+  if (purchaseCount > 0) {
     return {
       ok: false,
-      message: `Blocked: this clip has ${purchaseCount} purchase(s). Unpublish it instead, or use Force delete to also erase those ${purchaseCount} purchase record(s) and their downloads.`,
+      message: `Blocked: this clip has ${purchaseCount} purchase(s). Customers paid for it, so it is protected. Unpublish it instead (customers keep their downloads).`,
     };
-  }
-
-  let removedPurchases = 0;
-  if (purchaseCount > 0 && opts.force) {
-    const { error, count: delCount } = await supabase
-      .from("purchases")
-      .delete({ count: "exact" })
-      .eq("clip_id", clipId);
-    if (error) {
-      return { ok: false, message: `Could not remove purchase records: ${error.message}` };
-    }
-    removedPurchases = delCount ?? 0;
   }
 
   const { error: clipError } = await supabase.from("clips").delete().eq("id", clipId);
@@ -73,15 +63,14 @@ export async function deleteClipCascade(
 
   return {
     ok: true,
-    message: `Clip deleted. Storage — ${fileStatus}. Purchase records removed: ${removedPurchases}.`,
+    message: `Clip deleted. Storage — ${fileStatus}.`,
   };
 }
 
 /** Delete a game and every clip under it. Blocked when any of those clips has
- * purchases unless `force`. */
+ * purchases. */
 export async function deleteGameCascade(
   gameId: string,
-  opts: { force?: boolean } = {},
 ): Promise<MutationResult> {
   const supabase = createServiceClient();
 
@@ -100,33 +89,29 @@ export async function deleteGameCascade(
 
   let purchaseCount = 0;
   if (clipRows.length > 0) {
-    const { count } = await supabase
+    const { count, error: countError } = await supabase
       .from("purchases")
       .select("id", { count: "exact", head: true })
       .in(
         "clip_id",
         clipRows.map((c) => c.id),
       );
-    purchaseCount = count ?? 0;
+    if (countError || count === null) {
+      return { ok: false, message: "Could not check whether customers bought clips from this game, so nothing was deleted. Try again." };
+    }
+    purchaseCount = count;
   }
 
-  if (purchaseCount > 0 && !opts.force) {
+  if (purchaseCount > 0) {
     return {
       ok: false,
-      message: `Blocked: ${clipRows.length} clip(s) under "${game.school_a} vs ${game.school_b}" have ${purchaseCount} purchase(s) between them. Use Force delete to erase the clips, their files, and those ${purchaseCount} purchase record(s).`,
+      message: `Blocked: ${clipRows.length} clip(s) under "${game.school_a} vs ${game.school_b}" have ${purchaseCount} purchase(s) between them. Customers paid for them, so the game is protected. Unpublish the clips instead (customers keep their downloads).`,
     };
   }
 
-  let removedPurchases = 0;
   for (const clip of clipRows) {
-    if (opts.force) {
-      const { count: delCount } = await supabase
-        .from("purchases")
-        .delete({ count: "exact" })
-        .eq("clip_id", clip.id);
-      removedPurchases += delCount ?? 0;
-    }
-    await supabase.from("clips").delete().eq("id", clip.id);
+    const { error: clipDelError } = await supabase.from("clips").delete().eq("id", clip.id);
+    if (clipDelError) return { ok: false, message: `Clip delete failed: ${clipDelError.message}. Nothing further was deleted.` };
     await removeClipFiles(clip);
   }
 
@@ -135,7 +120,7 @@ export async function deleteGameCascade(
 
   return {
     ok: true,
-    message: `Deleted "${game.school_a} vs ${game.school_b}", ${clipRows.length} clip(s), and ${removedPurchases} purchase record(s).`,
+    message: `Deleted "${game.school_a} vs ${game.school_b}" and ${clipRows.length} clip(s).`,
   };
 }
 
@@ -190,6 +175,12 @@ export async function deleteOrderByToken(token: string): Promise<MutationResult>
     .eq("stripe_payment_id", token);
   if (!rows || rows.length === 0) {
     return { ok: false, message: "No purchase records found for that order." };
+  }
+
+  // A paid BRYT VISION EDIT order is an active fulfillment job (shirt + video): never erase it from here.
+  const { data: editRow } = await supabase.from("edit_orders").select("id").eq("stripe_session_id", token).maybeSingle();
+  if (editRow) {
+    return { ok: false, message: "This order includes a BRYT VISION EDIT + FREE SHIRT, so it is protected and can't be deleted here." };
   }
 
   const { error, count } = await supabase

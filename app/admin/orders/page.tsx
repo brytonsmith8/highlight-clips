@@ -4,6 +4,11 @@ import Link from "next/link";
 import { requireAdminOrRedirect } from "@/lib/admin/auth";
 import { adminListOrders } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
+import { effectiveAccess, listOrderAccessFlags } from "@/lib/order-access";
+import { listEditOrders } from "@/lib/edit-orders";
+import { ADMIN_SETTABLE_STATUSES, EDIT_STATUSES, editStatusLabel } from "@/lib/edit-offer";
+import { setEditStatusAction } from "./edit-actions";
+import { EditDeliveryUpload } from "@/components/admin/edit-delivery-upload";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import {
   deleteOrderAction,
@@ -25,9 +30,31 @@ function fmt(iso: string): string {
   });
 }
 
+/** Refund / dispute state of an order, shown in red so it is never missed. Nothing here changes access by itself. */
+function AccessBadge({ flags }: { flags: ReturnType<typeof listOrderAccessFlags> extends Promise<Map<string, infer F>> ? F | undefined : never }) {
+  if (!flags) return null;
+  const a = effectiveAccess(flags);
+  const labels: string[] = [];
+  if (flags.refund_status === "full") labels.push("FULLY REFUNDED: downloads revoked");
+  if (flags.refund_status === "partial") labels.push("PARTIAL REFUND: review manually (clips NOT revoked)");
+  if (flags.dispute_status === "open") labels.push("DISPUTE OPEN: downloads suspended");
+  if (flags.dispute_status === "lost") labels.push("DISPUTE LOST: downloads revoked");
+  if (flags.dispute_status === "won") labels.push("Dispute won");
+  if (flags.needs_review && !labels.some((l) => l.startsWith("PARTIAL"))) labels.push("Needs manual review");
+  if (labels.length === 0) return null;
+  return (
+    <p className={"mt-1 rounded border p-2 text-xs font-semibold " + (a.allowed ? "border-amber-400 bg-amber-50 text-amber-900" : "border-red-500 bg-red-50 text-red-800")}>
+      {labels.join(" · ")}
+      {flags.note ? <span className="block font-normal">{flags.note}</span> : null}
+    </p>
+  );
+}
+
 export default async function AdminOrdersPage() {
   await requireAdminOrRedirect();
-  const orders = await adminListOrders();
+  const [orders, editOrders, accessFlags] = await Promise.all([adminListOrders(), listEditOrders(), listOrderAccessFlags()]);
+  const editTokens = new Set(editOrders.map((e) => e.stripe_session_id));
+  const needsWork = editOrders.filter((e) => e.status !== "fulfilled");
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -39,6 +66,110 @@ export default async function AdminOrdersPage() {
         One row per Stripe Checkout. &ldquo;Extend&rdquo; resets the 72-hour
         download window to start now.
       </p>
+
+      {editOrders.length > 0 && (
+        <section aria-label="BRYT VISION EDIT orders" className="mt-6 rounded-lg border-2 border-accent p-4">
+          <h2 className="text-lg font-bold">
+            BRYT VISION EDIT + FREE SHIRT orders{" "}
+            <span className="text-sm font-semibold text-accent">
+              ({needsWork.length} need{needsWork.length === 1 ? "s" : ""} work)
+            </span>
+          </h2>
+          <div className="mt-3 space-y-3">
+            {[...editOrders]
+              .sort((a, b) => Number(a.status === "fulfilled") - Number(b.status === "fulfilled"))
+              .map((e) => (
+                <div key={e.id} className="rounded border border-border p-3 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="font-semibold">
+                      BRYT VISION EDIT purchased &middot; {formatPrice(e.edit_price_cents / 100)} add-on
+                    </p>
+                    <span
+                      className={
+                        "rounded-full px-3 py-1 text-xs font-semibold " +
+                        (e.status === "fulfilled" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800")
+                      }
+                    >
+                      {editStatusLabel(e.status)}
+                    </span>
+                  </div>
+                  <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
+                    <dt className="text-muted">Payment</dt>
+                    <dd>{e.payment_status === "paid" ? "Paid (verified by Stripe)" : e.payment_status}</dd>
+                    <dt className="text-muted">Order date</dt>
+                    <dd>{fmt(e.created_at)}</dd>
+                    <dt className="text-muted">Customer</dt>
+                    <dd>
+                      {e.customer_name ?? "—"} &middot; {e.customer_email ?? "—"}
+                      {e.customer_phone ? ` · ${e.customer_phone}` : ""}
+                    </dd>
+                    <dt className="text-muted">Ship to</dt>
+                    <dd>
+                      {[e.ship_name, e.ship_line1, e.ship_line2].filter(Boolean).join(", ")}
+                      <br />
+                      {[e.ship_city, e.ship_state, e.ship_postal_code].filter(Boolean).join(", ")} {e.ship_country ?? ""}
+                    </dd>
+                    <dt className="text-muted">Athlete</dt>
+                    <dd>
+                      {e.athlete_name || "(no name)"} &middot; #{e.athlete_jersey ?? "?"} &middot;{" "}
+                      {e.athlete_school ?? "school not set"}
+                      <br />
+                      <span className="font-mono text-[10px] text-muted">Athlete ID {e.athlete_id}</span>
+                    </dd>
+                    <dt className="text-muted">Shirt</dt>
+                    <dd>
+                      {e.shirt_color ?? "?"}, size {e.shirt_size ?? "?"}
+                      {e.shirt_sleeve ? `, ${e.shirt_sleeve} sleeve` : ""}
+                    </dd>
+                    <dt className="text-muted">Clips ({e.clips.length})</dt>
+                    <dd>
+                      <ul className="list-disc pl-4">
+                        {e.clips.map((c) => (
+                          <li key={c.clipId}>
+                            {c.game}
+                            {c.date ? ` · ${c.date}` : ""}
+                            {c.jersey ? ` · #${c.jersey}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </dl>
+                  <form action={setEditStatusAction} className="mt-3 flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="sessionId" value={e.stripe_session_id} />
+                    <select
+                      name="status"
+                      defaultValue={e.status}
+                      aria-label="Fulfillment status"
+                      className="rounded border border-border px-2 py-1"
+                    >
+                      {EDIT_STATUSES.filter(
+                        (s) => s.id === e.status || (ADMIN_SETTABLE_STATUSES as readonly string[]).includes(s.id),
+                      ).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit" className="rounded bg-accent px-3 py-1 font-medium text-white">
+                      Update status
+                    </button>
+                    <span className="font-mono text-[10px] text-muted">{e.stripe_session_id}</span>
+                  </form>
+                  <p className="mt-2 text-xs text-muted">
+                    Payment: {e.payment_status} &middot; Delivery:{" "}
+                    {e.delivery_path
+                      ? `delivered ${new Date(e.delivered_at ?? e.created_at).toLocaleString("en-US")}`
+                      : "not delivered yet"}
+                    {e.delivery_path &&
+                      ` · ${e.first_downloaded_at ? `customer downloaded ${e.download_count ?? 1}× (first ${new Date(e.first_downloaded_at).toLocaleString("en-US")})` : "not downloaded yet"}`}
+                  </p>
+                  <AccessBadge flags={accessFlags.get(e.stripe_session_id)} />
+                  <EditDeliveryUpload sessionId={e.stripe_session_id} delivered={!!e.delivery_path} />
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
 
       <div className="mt-6 space-y-3">
         {orders.length === 0 && <p className="text-muted">No orders yet.</p>}
@@ -56,6 +187,12 @@ export default async function AdminOrdersPage() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="text-sm">
                   <p className="font-medium">{order.buyerEmail}</p>
+                  <AccessBadge flags={accessFlags.get(order.token)} />
+                  {editTokens.has(order.token) && (
+                    <p className="mt-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                      Includes BRYT VISION EDIT + free shirt (see above)
+                    </p>
+                  )}
                   <p className="text-muted">
                     {order.items.map((i) => i.label).join(", ")} &middot;{" "}
                     {formatPrice(total)}
