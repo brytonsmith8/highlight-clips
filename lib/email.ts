@@ -196,3 +196,64 @@ export async function sendMerchConfirmationEmail(params: {
     throw new Error(`Failed to send merch confirmation email: ${error.message}`);
   }
 }
+
+/** Tells the customer their free BRYT VISION shirt is on its way, with carrier and tracking number. */
+export async function sendShirtShippedEmail(params: {
+  to: string;
+  token: string;
+  carrier: string;
+  trackingNumber: string;
+  trackingUrl: string | null;
+  athleteLabel?: string | null;
+}): Promise<void> {
+  const resend = new Resend(requireResendApiKey());
+  const orderUrl = `${publicEnv.siteUrl}/order/${params.token}`;
+  const carrier = escapeEmailHtml(params.carrier);
+  const number = escapeEmailHtml(params.trackingNumber);
+  const html = `
+    <h2 style="margin:0 0 12px;">YOUR FREE BRYT VISION SHIRT HAS SHIPPED</h2>
+    <p>${params.athleteLabel ? `The shirt for ${escapeEmailHtml(params.athleteLabel)} is` : "Your shirt is"} on its way.
+       It came <strong>included with your BRYT VISION EDIT</strong>, so there is no extra charge.</p>
+    <p><strong>Carrier:</strong> ${carrier}<br/><strong>Tracking number:</strong> ${number}</p>
+    ${params.trackingUrl ? `<p><a href="${params.trackingUrl}">Track your package</a></p>` : ""}
+    <p><a href="${orderUrl}">View your order</a></p>
+    <p><strong>ALL FOR THE GLORY OF GOD.</strong></p>
+  `;
+  const { error } = await resend.emails.send({
+    from: requireEmailFrom(),
+    to: params.to,
+    subject: "Your free BRYT VISION shirt has shipped",
+    html,
+  });
+  if (error) throw new Error(`Failed to send shirt-shipped email: ${error.message}`);
+}
+
+/** Internal heads-up to the owner when a PAID BRYT VISION EDIT + FREE SHIRT order has been recorded. */
+export async function sendAdminAddOnEmail(params: {
+  to: string;
+  orderNumber: string;
+  customerName: string | null;
+  athleteLabel: string | null;
+  shirt: string;
+  shipTo: string[];
+  clipCount: number;
+}): Promise<void> {
+  const resend = new Resend(requireResendApiKey());
+  const e = escapeEmailHtml;
+  const html = `
+    <h2 style="margin:0 0 12px;">New BRYT VISION EDIT order ${e(params.orderNumber)}</h2>
+    <p><strong>Customer:</strong> ${e(params.customerName ?? "(no name)")}<br/>
+       <strong>Athlete:</strong> ${e(params.athleteLabel ?? "(not set)")}<br/>
+       <strong>Clips purchased:</strong> ${params.clipCount}<br/>
+       <strong>Shirt:</strong> ${e(params.shirt)}</p>
+    <p><strong>Ship to:</strong><br/>${params.shipTo.map((l) => e(l)).join("<br/>") || "(no address)"}</p>
+    <p>Payment confirmed by Stripe. Open Admin &rarr; Orders to start the edit and the shirt.</p>
+  `;
+  const { error } = await resend.emails.send({
+    from: requireEmailFrom(),
+    to: params.to,
+    subject: `New BRYT VISION EDIT order ${params.orderNumber}`,
+    html,
+  });
+  if (error) throw new Error(`Failed to send admin add-on email: ${error.message}`);
+}

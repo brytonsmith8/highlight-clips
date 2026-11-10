@@ -2,8 +2,21 @@ import "server-only";
 
 import type Stripe from "stripe";
 
-import { EDIT_PRICE_CENTS, ADMIN_SETTABLE_STATUSES, type EditStatus } from "@/lib/edit-offer";
-import { sendEditReadyEmail } from "@/lib/email";
+import {
+  EDIT_PRICE_CENTS,
+  ADMIN_SETTABLE_STATUSES,
+  EDIT_TRACK_STATUSES,
+  SHIRT_CARRIERS,
+  SHIRT_STATUSES,
+  formatOrderNumber,
+  isValidTrackingNumber,
+  legacyStatusForEditTrack,
+  trackingUrl,
+  type EditStatus,
+  type EditTrackStatus,
+  type ShirtStatus,
+} from "@/lib/edit-offer";
+import { sendAdminAddOnEmail, sendEditReadyEmail, sendShirtShippedEmail } from "@/lib/email";
 import { getOrderAccess } from "@/lib/order-access";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -41,6 +54,16 @@ export interface EditOrderRow {
   shirt_sleeve: string | null;
   clips: EditClipSnapshot[];
   admin_notes: string | null;
+  /** Fulfillment columns from migration 0010 (undefined until it is applied; the UI shows the defaults). */
+  order_number?: number | null;
+  shirt_status?: string | null;
+  edit_status?: string | null;
+  shirt_carrier?: string | null;
+  shirt_tracking_number?: string | null;
+  shirt_shipped_at?: string | null;
+  shirt_delivered_at?: string | null;
+  tracking_emailed_at?: string | null;
+  admin_notified_at?: string | null;
   delivery_path?: string | null;
   delivered_at?: string | null;
   first_downloaded_at?: string | null;
@@ -151,10 +174,14 @@ export async function recordEditOrder(session: Stripe.Checkout.Session): Promise
     clips: snapshot,
   };
 
-  const { error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("edit_orders")
-    .upsert(row, { onConflict: "stripe_session_id", ignoreDuplicates: true });
+    .upsert(row, { onConflict: "stripe_session_id", ignoreDuplicates: true })
+    .select("id");
   if (error) throw new Error(`edit order: ${error.message}`);
+  // Only the request that really created the row announces it, so webhook retries and the order-page self-heal
+  // never send a second notification. The notification can never fail the purchase.
+  if ((inserted ?? []).length > 0) await notifyAdminOfAddOn(session.id);
   return { recorded: true };
 }
 
@@ -176,6 +203,10 @@ export async function getEditOrderPublic(token: string): Promise<{
   athleteJersey: string | null;
   athleteName: string | null;
   delivered: boolean;
+  shirtStatus: string | null;
+  editStatus: string | null;
+  shirtCarrier: string | null;
+  shirtTracking: string | null;
 } | null> {
   const { data, error } = await createServiceClient()
     .from("edit_orders")
@@ -191,8 +222,19 @@ export async function getEditOrderPublic(token: string): Promise<{
     .eq("stripe_session_id", token)
     .maybeSingle();
   const delivered = !dl.error && !!(dl.data as { delivery_path: string | null } | null)?.delivery_path;
+  // Fulfillment columns come from migration 0010: read separately so an old schema can't hide the order.
+  const ff = await createServiceClient()
+    .from("edit_orders")
+    .select("shirt_status, edit_status, shirt_carrier, shirt_tracking_number")
+    .eq("stripe_session_id", token)
+    .maybeSingle();
+  const f = !ff.error ? ((ff.data as Record<string, string | null> | null) ?? {}) : {};
   return {
     delivered,
+    shirtStatus: f.shirt_status ?? null,
+    editStatus: f.edit_status ?? null,
+    shirtCarrier: f.shirt_carrier ?? null,
+    shirtTracking: f.shirt_tracking_number ?? null,
     status: d.status ?? "paid_editing_needed",
     shirtSize: d.shirt_size,
     shirtColor: d.shirt_color,
@@ -248,8 +290,15 @@ export async function setEditDelivery(sessionId: string, path: string): Promise<
     updated_at: new Date().toISOString(),
   };
   // Only move forward: never pull a shipped/fulfilled order back to "edit completed".
-  if (status === "paid_editing_needed" || status === "editing_in_progress") patch.status = "edit_completed";
-  const { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);
+  if (status === "paid_editing_needed" || status === "editing_in_progress") {
+    patch.status = "edit_completed";
+    patch.edit_status = "edit_completed"; // migration 0010 column; dropped below if it does not exist yet
+  }
+  let { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);
+  if (error && isMissingColumnError(error) && "edit_status" in patch) {
+    delete patch.edit_status;
+    ({ error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId));
+  }
   if (error) return { ok: false, message: error.message };
   return { ok: true, message: "Edit delivered.", first };
 }
@@ -302,4 +351,147 @@ export async function recordEditDownload(sessionId: string): Promise<void> {
   } catch {
     /* tracking is optional */
   }
+}
+
+
+function isMissingColumnError(error: { message?: string; code?: string } | null | undefined): boolean {
+  return !!error && (error.code === "42703" || /column .* does not exist|could not find the .* column/i.test(error.message ?? ""));
+}
+
+const MIGRATION_HINT = "Fulfillment tracking needs database migration 0010 to be applied first.";
+
+function athleteLabelOf(d: { athlete_jersey?: string | null; athlete_name?: string | null }): string | null {
+  return [d.athlete_jersey ? `#${d.athlete_jersey}` : "", d.athlete_name ?? ""].filter(Boolean).join(" ") || null;
+}
+
+/**
+ * Emails the owner (ADMIN_NOTIFY_EMAIL) that a PAID add-on order was recorded. Called once, by the request that
+ * created the row. Never throws and never blocks the purchase; if the address is not configured it only logs.
+ */
+export async function notifyAdminOfAddOn(sessionId: string): Promise<{ sent: boolean; reason?: string }> {
+  try {
+    const to = process.env.ADMIN_NOTIFY_EMAIL?.trim();
+    if (!to) {
+      console.warn("[edit orders] ADMIN_NOTIFY_EMAIL is not set: no new-order email sent for", sessionId);
+      return { sent: false, reason: "ADMIN_NOTIFY_EMAIL not set" };
+    }
+    const supabase = createServiceClient();
+    const { data } = await supabase.from("edit_orders").select("*").eq("stripe_session_id", sessionId).maybeSingle();
+    const d = data as EditOrderRow | null;
+    if (!d || d.payment_status !== "paid") return { sent: false, reason: "not a paid add-on order" };
+    if (d.admin_notified_at) return { sent: false, reason: "already notified" };
+    await sendAdminAddOnEmail({
+      to,
+      orderNumber: formatOrderNumber(d.order_number, d.id),
+      customerName: d.customer_name,
+      athleteLabel: athleteLabelOf(d),
+      shirt: `${d.shirt_color ?? "?"}, size ${d.shirt_size ?? "?"}${d.shirt_sleeve ? `, ${d.shirt_sleeve} sleeve` : ""}`,
+      shipTo: [
+        [d.ship_name, d.ship_line1, d.ship_line2].filter(Boolean).join(", "),
+        [[d.ship_city, d.ship_state].filter(Boolean).join(", "), d.ship_postal_code].filter(Boolean).join(" "),
+        d.ship_country ?? "",
+      ].filter(Boolean),
+      clipCount: Array.isArray(d.clips) ? d.clips.length : 0,
+    });
+    await supabase
+      .from("edit_orders")
+      .update({ admin_notified_at: new Date().toISOString() })
+      .eq("stripe_session_id", sessionId); // column from migration 0010; harmless if missing
+    return { sent: true };
+  } catch (e) {
+    console.error("[edit orders] admin notification failed:", e instanceof Error ? e.message : "error");
+    return { sent: false, reason: "email failed" };
+  }
+}
+
+/** Admin: move the EDIT through Awaiting Edit / Editing in Progress / Edit Completed / Delivered, with notes. */
+export async function setEditTrack(
+  sessionId: string,
+  status: string,
+  notes: string | null,
+): Promise<{ ok: boolean; message: string }> {
+  if (!EDIT_TRACK_STATUSES.some((s) => s.id === status)) return { ok: false, message: "Unknown edit status." };
+  const track = status as EditTrackStatus;
+  const patch: Record<string, unknown> = {
+    edit_status: track,
+    status: legacyStatusForEditTrack(track), // keeps the cleanup job's footage-retention rule correct
+    updated_at: new Date().toISOString(),
+  };
+  if (notes !== null) patch.admin_notes = notes.slice(0, 4000) || null;
+  const { error, data } = await createServiceClient()
+    .from("edit_orders")
+    .update(patch)
+    .eq("stripe_session_id", sessionId)
+    .select("id");
+  if (error) return { ok: false, message: isMissingColumnError(error) ? MIGRATION_HINT : error.message };
+  if (!data || data.length === 0) return { ok: false, message: "Order not found." };
+  return { ok: true, message: "Edit status saved." };
+}
+
+/**
+ * Admin: update the shirt shipment. Shipped needs a carrier and a tracking number. When asked, emails the customer
+ * the tracking details (never for a refunded / disputed order, and never for an unpaid one).
+ */
+export async function setShirtFulfillment(
+  sessionId: string,
+  input: { status: string; carrier: string | null; tracking: string | null; emailCustomer: boolean },
+): Promise<{ ok: boolean; message: string }> {
+  if (!SHIRT_STATUSES.some((s) => s.id === input.status)) return { ok: false, message: "Unknown shirt status." };
+  const status = input.status as ShirtStatus;
+  const carrier = input.carrier?.trim() || null;
+  const tracking = input.tracking?.trim() || null;
+  if (carrier && !(SHIRT_CARRIERS as readonly string[]).includes(carrier)) return { ok: false, message: "Unknown carrier." };
+  if (tracking && !isValidTrackingNumber(tracking)) {
+    return { ok: false, message: "Tracking number can only use letters, numbers, spaces and dashes (6-40 characters)." };
+  }
+  if (status === "shipped" && (!carrier || !tracking)) {
+    return { ok: false, message: "Choose the carrier and enter the tracking number to mark the shirt as shipped." };
+  }
+
+  const supabase = createServiceClient();
+  const { data: row, error: readError } = await supabase.from("edit_orders").select("*").eq("stripe_session_id", sessionId).maybeSingle();
+  if (readError) return { ok: false, message: readError.message };
+  const d = row as EditOrderRow | null;
+  if (!d) return { ok: false, message: "Order not found." };
+  if (d.payment_status !== "paid") return { ok: false, message: "This order is not paid." };
+  if (d.shirt_status === undefined) return { ok: false, message: MIGRATION_HINT };
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    shirt_status: status,
+    shirt_carrier: carrier,
+    shirt_tracking_number: tracking,
+    updated_at: now,
+  };
+  if ((status === "shipped" || status === "delivered") && !d.shirt_shipped_at) patch.shirt_shipped_at = now;
+  if (status === "delivered" && !d.shirt_delivered_at) patch.shirt_delivered_at = now;
+
+  let emailNote = "";
+  if (input.emailCustomer && (status === "shipped" || status === "delivered") && carrier && tracking) {
+    if (!d.customer_email) {
+      emailNote = " No customer email is on the order, so nothing was emailed.";
+    } else if (!(await getOrderAccess(sessionId)).allowed) {
+      emailNote = " The order is refunded or under dispute, so no email was sent.";
+    } else {
+      try {
+        await sendShirtShippedEmail({
+          to: d.customer_email,
+          token: sessionId,
+          carrier,
+          trackingNumber: tracking,
+          trackingUrl: trackingUrl(carrier, tracking),
+          athleteLabel: athleteLabelOf(d),
+        });
+        patch.tracking_emailed_at = now;
+        emailNote = " Tracking emailed to the customer.";
+      } catch (e) {
+        console.error("[edit orders] tracking email failed:", e instanceof Error ? e.message : "error");
+        emailNote = " The tracking email could NOT be sent (saved anyway); try again.";
+      }
+    }
+  }
+
+  const { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);
+  if (error) return { ok: false, message: isMissingColumnError(error) ? MIGRATION_HINT : error.message };
+  return { ok: true, message: `Shirt status saved.${emailNote}` };
 }

@@ -92,3 +92,72 @@ export function orderTotals(clipCount: number, withEdit: boolean): OrderTotals {
   const editCents = withEdit ? EDIT_PRICE_CENTS : 0;
   return { clipCount, clipTotalCents, editCents, totalCents: clipTotalCents + editCents };
 }
+
+/* ---- Add-on fulfillment (migration 0010): two separate tracks, set by hand in the admin ------------------ */
+
+export const SHIRT_STATUSES = [
+  { id: "awaiting_shipment", label: "Awaiting Shipment" },
+  { id: "preparing_shipment", label: "Preparing Shipment" },
+  { id: "shipped", label: "Shipped" },
+  { id: "delivered", label: "Delivered" },
+] as const;
+export type ShirtStatus = (typeof SHIRT_STATUSES)[number]["id"];
+
+export const EDIT_TRACK_STATUSES = [
+  { id: "awaiting_edit", label: "Awaiting Edit" },
+  { id: "editing_in_progress", label: "Editing in Progress" },
+  { id: "edit_completed", label: "Edit Completed" },
+  { id: "delivered", label: "Delivered to Customer" },
+] as const;
+export type EditTrackStatus = (typeof EDIT_TRACK_STATUSES)[number]["id"];
+
+export function shirtStatusLabel(id: string | null | undefined): string {
+  return SHIRT_STATUSES.find((s) => s.id === id)?.label ?? SHIRT_STATUSES[0].label;
+}
+export function editTrackLabel(id: string | null | undefined): string {
+  return EDIT_TRACK_STATUSES.find((s) => s.id === id)?.label ?? EDIT_TRACK_STATUSES[0].label;
+}
+
+/**
+ * The older single `status` column is still used by the cleanup job (it keeps the original footage while an edit
+ * is unfinished), so every edit-track change is mirrored into it. Values must stay inside its existing check.
+ */
+export function legacyStatusForEditTrack(id: EditTrackStatus): EditStatus {
+  switch (id) {
+    case "awaiting_edit":
+      return "paid_editing_needed";
+    case "editing_in_progress":
+      return "editing_in_progress";
+    case "edit_completed":
+      return "edit_completed";
+    case "delivered":
+      return "fulfilled";
+  }
+}
+
+export const SHIRT_CARRIERS = ["USPS", "UPS", "FedEx", "DHL", "Other"] as const;
+export type ShirtCarrier = (typeof SHIRT_CARRIERS)[number];
+
+/** The shirt ships free with the add-on; this is an estimate, not a guarantee. */
+export const SHIRT_SHIP_ESTIMATE = "about 3–5 business days";
+
+/** "BV-1001" (falls back to a short piece of the order id when the number is not there yet). */
+export function formatOrderNumber(orderNumber: number | string | null | undefined, fallbackId?: string): string {
+  if (orderNumber !== null && orderNumber !== undefined && String(orderNumber) !== "") return `BV-${orderNumber}`;
+  return fallbackId ? `BV-${fallbackId.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase()}` : "BV-?";
+}
+
+/** Letters, numbers, dashes and spaces only, 6-40 characters: safe to put in an email, a page and a link. */
+export function isValidTrackingNumber(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9 -]{4,38}[A-Za-z0-9]$/.test(value.trim());
+}
+
+/** Carrier tracking page for the big three, or null (the number is still shown as text). */
+export function trackingUrl(carrier: string | null | undefined, tracking: string | null | undefined): string | null {
+  if (!carrier || !tracking || !isValidTrackingNumber(tracking)) return null;
+  const n = encodeURIComponent(tracking.replace(/\s+/g, ""));
+  if (carrier === "USPS") return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`;
+  if (carrier === "UPS") return `https://www.ups.com/track?tracknum=${n}`;
+  if (carrier === "FedEx") return `https://www.fedex.com/fedextrack/?trknbr=${n}`;
+  return null;
+}
