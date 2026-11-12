@@ -13,6 +13,7 @@ const DB_UPDATE_NEEDED =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function revalidateEverywhere() {
+  revalidatePath("/admin");
   revalidatePath("/admin/clips");
   revalidatePath("/admin/games");
   revalidatePath("/clips");

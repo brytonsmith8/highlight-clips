@@ -4,7 +4,13 @@ import { useRef, useState, type FormEvent } from "react";
 
 import { discardClipUpload, finalizeClip, startClipUpload } from "@/app/admin/clips/actions";
 import { createAthleteProfile } from "@/app/admin/athletes/actions";
-import { DEFAULT_CLIP_PRICE_DOLLARS } from "@/lib/pricing";
+import {
+  BUNDLE_MIN_CLIPS,
+  BUNDLE_PRICE_CENTS,
+  DEFAULT_CLIP_PRICE_DOLLARS,
+  INDIVIDUAL_PRICE_CENTS,
+  formatCents,
+} from "@/lib/pricing";
 import { createClient } from "@/lib/supabase/client";
 
 export interface ClipFormGame {
@@ -57,7 +63,10 @@ export function NewClipForm({
   games,
   athletes,
   jerseyOptions = {},
+  selectedGameId,
 }: {
+  /** When this changes (e.g. a game was just created on the dashboard) that game is selected. */
+  selectedGameId?: string;
   games: ClipFormGame[];
   athletes: ClipFormAthlete[];
   /** Previously used jersey numbers per school (key: lower-case school name). */
@@ -69,7 +78,6 @@ export function NewClipForm({
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [current, setCurrent] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
-  const [priceText, setPriceText] = useState(DEFAULT_CLIP_PRICE_DOLLARS.toFixed(2));
   const [pending, setPending] = useState<Pending | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   // The latest queue/game for async steps (state would be stale inside them).
@@ -83,8 +91,16 @@ export function NewClipForm({
 
   const game = games.find((g) => g.id === gameId);
   const schools = game?.schools ?? [];
-  const priceValue = Number(priceText);
-  const priceOk = Number.isFinite(priceValue) && priceValue > 0 && priceValue <= 1000;
+  // The price customers pay is set by the site (lib/pricing.ts), never per clip. New clips are saved at the
+  // standard single-clip price so the stored value always matches what the site charges for one clip.
+  const priceValue = DEFAULT_CLIP_PRICE_DOLLARS;
+
+  // Adjusting state when a prop changes (React-approved pattern; no effect needed).
+  const [seenSelected, setSeenSelected] = useState(selectedGameId);
+  if (selectedGameId !== seenSelected) {
+    setSeenSelected(selectedGameId);
+    if (selectedGameId && !busy && pending === null && current === null) onGameChange(selectedGameId);
+  }
 
   function onGameChange(id: string) {
     setGameId(id);
@@ -207,7 +223,6 @@ export function NewClipForm({
     if (!gameId) return setStatus("Pick a game.");
     if (queue.length === 0) return setStatus("Choose at least one video.");
     if (queue.some((q) => !q.school)) return setStatus("Choose a school for every clip.");
-    if (!priceOk) return setStatus("Enter a listing price above $0 (the default is $12.50).");
     live.current = { queue, gameId, price: Math.round(priceValue * 100) / 100 };
     await runItem(0);
   }
@@ -242,7 +257,7 @@ export function NewClipForm({
         ? " Saved, but school/jersey were NOT stored: run the database update (migration 0006) in Supabase, then set them on the clip."
         : "";
       setBusy(false);
-      if (note) setStatus(`Clip saved (unpublished).${note}`);
+      if (note) setStatus(`Clip saved (not published).${note}`);
       await advance();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Something went wrong.");
@@ -276,10 +291,18 @@ export function NewClipForm({
       onSubmit={handleSubmit}
       className="mt-6 space-y-3 rounded-lg border border-border p-4"
     >
-      <h2 className="font-semibold">New clips</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">New clips</h2>
+        {busy && current !== null && !pending && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Processing</span>
+        )}
+        {pending && !busy && (
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-900">Ready to review</span>
+        )}
+      </div>
       <p className="text-sm text-muted">
         1) Pick the game. 2) Choose one or many videos. 3) Set each clip&apos;s school and jersey number.
-        Publish them afterwards from the list below.
+        Saved clips start as Not Published; publish them from the Recent clips list below.
       </p>
       <select
         name="game_id"
@@ -313,27 +336,15 @@ export function NewClipForm({
         />
       </label>
 
-      <label className="block text-sm text-muted">
-        Listing price per clip (dollars)
-        <input
-          name="price"
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0.01"
-          max="1000"
-          value={priceText}
-          disabled={working}
-          onChange={(e) => setPriceText(e.target.value)}
-          onBlur={() => priceOk && setPriceText(priceValue.toFixed(2))}
-          className="mt-1 w-32 rounded border border-border px-3 py-2 text-foreground"
-        />
-        <span className="mt-1 block text-xs">
-          Defaults to {DEFAULT_CLIP_PRICE_DOLLARS.toFixed(2)} for every new clip. This is the price saved on the clip.
-          What customers are charged at checkout is set by the site ($12.50 each for 1&ndash;3 clips, $10.50 each for 4 or
-          more).
-        </span>
-      </label>
+      <div className="rounded border border-border bg-black/[0.03] p-3 text-sm">
+        <p className="font-medium">
+          Price customers pay: {formatCents(INDIVIDUAL_PRICE_CENTS)} each, or {formatCents(BUNDLE_PRICE_CENTS)} each when
+          they buy {BUNDLE_MIN_CLIPS} or more.
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Set by the site at checkout, so it is the same for every clip and is not edited per clip.
+        </p>
+      </div>
 
       {queue.length > 0 && (
         <ul className="space-y-2">

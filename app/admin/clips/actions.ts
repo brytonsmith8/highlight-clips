@@ -133,6 +133,7 @@ export async function finalizeClip(input: {
     throw new Error(error.message);
   }
 
+  revalidatePath("/admin");
   revalidatePath("/admin/clips");
   return { metaSaved };
 }
@@ -200,6 +201,7 @@ export async function setClipPublished(clipId: string, published: boolean) {
     .eq("id", clipId);
   if (error) throw new Error(error.message);
 
+  revalidatePath("/admin");
   revalidatePath("/admin/clips");
   revalidatePath("/games");
   revalidatePath("/");

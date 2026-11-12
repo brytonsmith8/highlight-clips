@@ -24,11 +24,14 @@ export function NewGameForm({
   sports,
   defaults,
   tablesReady,
+  onCreated,
 }: {
   schools: string[];
   sports: string[];
   defaults?: NewGameDefaults;
   tablesReady: boolean;
+  /** Called with the new game's id after it is saved (the dashboard uses it to select the game for uploading). */
+  onCreated?: (gameId: string) => void;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -52,6 +55,7 @@ export function NewGameForm({
           setHome("");
           setAway("");
           setSport("");
+          if (result.gameId) onCreated?.(result.gameId);
           router.refresh();
         }
       } catch (error) {
