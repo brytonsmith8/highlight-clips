@@ -92,7 +92,7 @@ export default async function AdminOrdersPage() {
                 <details key={e.id} open={!isDone(e)} className="rounded border border-border p-3 text-sm">
                   <summary className="cursor-pointer list-none">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-semibold">
+                      <p className="font-semibold [overflow-wrap:anywhere]">
                         {formatOrderNumber(e.order_number, e.id)} &middot; {e.customer_name ?? "(no name)"} &middot;{" "}
                         {e.athlete_name || "(no athlete)"}
                         <span className="ml-2 font-normal text-muted">
@@ -110,7 +110,7 @@ export default async function AdminOrdersPage() {
                       </span>
                     </div>
                   </summary>
-                  <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
+                  <dl className="mt-2 grid gap-x-4 gap-y-1 [overflow-wrap:anywhere] sm:grid-cols-[10rem_minmax(0,1fr)]">
                     <dt className="text-muted">Payment</dt>
                     <dd>{e.payment_status === "paid" ? "Paid (verified by Stripe)" : e.payment_status}</dd>
                     <dt className="text-muted">Order date</dt>
@@ -210,7 +210,7 @@ export default async function AdminOrdersPage() {
                       )}
                     </div>
                   </form>
-                  <p className="mt-1 font-mono text-[10px] text-muted">{e.stripe_session_id}</p>
+                  <p className="mt-1 font-mono text-[10px] text-muted [overflow-wrap:anywhere]">{e.stripe_session_id}</p>
                   <p className="mt-2 text-xs text-muted">
                     Payment: {e.payment_status} &middot; Delivery:{" "}
                     {e.delivery_path
