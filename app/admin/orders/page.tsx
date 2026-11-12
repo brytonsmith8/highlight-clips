@@ -6,7 +6,7 @@ import { adminListOrders } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
 import { formatCents } from "@/lib/pricing";
 import { effectiveAccess, listOrderAccessFlags } from "@/lib/order-access";
-import { listEditOrders } from "@/lib/edit-orders";
+import { listEditOrdersChecked } from "@/lib/edit-orders";
 import {
   EDIT_PRICE_CENTS,
   EDIT_TRACK_STATUSES,
@@ -62,7 +62,8 @@ function AccessBadge({ flags }: { flags: ReturnType<typeof listOrderAccessFlags>
 
 export default async function AdminOrdersPage() {
   await requireAdminOrRedirect();
-  const [orders, editOrders, accessFlags] = await Promise.all([adminListOrders(), listEditOrders(), listOrderAccessFlags()]);
+  const [orders, editRead, accessFlags] = await Promise.all([adminListOrders(), listEditOrdersChecked(), listOrderAccessFlags()]);
+  const editOrders = editRead.rows;
   const editTokens = new Set(editOrders.map((e) => e.stripe_session_id));
   const isDone = (e: (typeof editOrders)[number]) =>
     (e.edit_status ?? "awaiting_edit") === "delivered" && (e.shirt_status ?? "awaiting_shipment") === "delivered";
@@ -78,6 +79,32 @@ export default async function AdminOrdersPage() {
         One row per Stripe Checkout. &ldquo;Extend&rdquo; resets the 72-hour
         download window to start now.
       </p>
+
+      {editRead.error && (
+        <section
+          aria-label="BRYT VISION EDIT orders could not be loaded"
+          role="alert"
+          className="mt-6 rounded-lg border-2 border-red-600 bg-red-50 p-4 text-red-900"
+        >
+          <h2 className="text-lg font-bold">BRYT VISION EDIT + FREE SHIRT orders could not be loaded</h2>
+          <p className="mt-1 text-sm">
+            The add-on orders list failed to load, so paid add-ons may exist that are not shown below. Do not assume there are
+            none. Refresh the page; if this stays, check the database connection.
+          </p>
+          <p className="mt-1 text-xs [overflow-wrap:anywhere]">Details: {editRead.error}</p>
+        </section>
+      )}
+
+      {!editRead.error && editOrders.length === 0 && (
+        <section aria-label="BRYT VISION EDIT orders" className="mt-6 rounded-lg border-2 border-accent p-4">
+          <h2 className="text-lg font-bold">BRYT VISION EDIT + FREE SHIRT orders: None yet.</h2>
+          <p className="mt-1 text-sm text-muted">
+            When a customer buys the BRYT VISION EDIT add-on, it appears here with its BV order number, shirt shipping
+            (carrier, tracking, shipped and delivered dates), edit status, and the tracking-email options. Orders of clips
+            only are listed below.
+          </p>
+        </section>
+      )}
 
       {editOrders.length > 0 && (
         <section aria-label="BRYT VISION EDIT orders" className="mt-6 rounded-lg border-2 border-accent p-4">

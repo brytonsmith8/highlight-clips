@@ -185,6 +185,19 @@ export async function recordEditOrder(session: Stripe.Checkout.Session): Promise
   return { recorded: true };
 }
 
+/**
+ * Same list as `listEditOrders`, but a failed database read is REPORTED (`error`) instead of looking like
+ * "no add-on orders". The admin Orders page uses this so a broken read can never silently hide paid add-ons.
+ */
+export async function listEditOrdersChecked(): Promise<{ rows: EditOrderRow[]; error: string | null }> {
+  const { data, error } = await createServiceClient()
+    .from("edit_orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return { rows: [], error: error.message || "Unknown database error." };
+  return { rows: (data ?? []) as EditOrderRow[], error: null };
+}
+
 export async function listEditOrders(): Promise<EditOrderRow[]> {
   const { data, error } = await createServiceClient()
     .from("edit_orders")
