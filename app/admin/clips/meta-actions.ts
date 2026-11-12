@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin/auth";
 import { isMissingColumnError } from "@/lib/admin/clip-meta";
 import { createServiceClient } from "@/lib/supabase/service";
+import { ensureSchool, ensureSport, nameKey } from "@/lib/admin/saved-options";
 
 const DB_UPDATE_NEEDED =
   "The database update for sport / school / jersey number / titles has not been run yet. Run the new migration in Supabase first.";
@@ -61,14 +62,19 @@ export async function updateClipMeta(formData: FormData) {
 export async function updateGameDetails(formData: FormData) {
   await requireAdmin();
   const gameId = String(formData.get("gameId") ?? "");
-  const school_a = String(formData.get("school_a") ?? "").trim();
-  const school_b = String(formData.get("school_b") ?? "").trim();
+  const schoolARaw = String(formData.get("school_a") ?? "").trim();
+  const schoolBRaw = String(formData.get("school_b") ?? "").trim();
   const game_date = String(formData.get("game_date") ?? "").trim();
-  const sport = String(formData.get("sport") ?? "").trim().slice(0, 60) || null;
+  const sportRaw = String(formData.get("sport") ?? "").trim().slice(0, 60);
   const title = String(formData.get("title") ?? "").trim().slice(0, 160) || null;
-  if (!gameId || !school_a || !school_b || !/^\d{4}-\d{2}-\d{2}$/.test(game_date)) {
+  if (!gameId || !schoolARaw || !schoolBRaw || !/^\d{4}-\d{2}-\d{2}$/.test(game_date)) {
     throw new Error("Both teams and a valid date are required.");
   }
+  if (nameKey(schoolARaw) === nameKey(schoolBRaw)) throw new Error("The home team and the away team must be different schools.");
+  // Re-use the saved spelling of a school/sport (or save it if new) so the lists never get duplicates.
+  const school_a = await ensureSchool(schoolARaw);
+  const school_b = await ensureSchool(schoolBRaw);
+  const sport = sportRaw ? await ensureSport(sportRaw) : null;
 
   const supabase = createServiceClient();
   const { error } = await supabase

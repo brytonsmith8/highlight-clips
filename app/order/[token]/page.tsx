@@ -8,6 +8,7 @@ import {
 } from "@/lib/orders";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formatGameDate } from "@/lib/format";
+import { formatCents } from "@/lib/pricing";
 import { getOrderScripture } from "@/lib/clip-orders";
 import { ScriptureCard } from "@/components/scripture-card";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/lib/scriptures";
 import { Countdown } from "@/components/countdown";
 import { getEditOrderPublic } from "@/lib/edit-orders";
-import { SHIRT_SHIP_ESTIMATE, editStatusLabel, editTrackLabel, shirtStatusLabel, trackingUrl } from "@/lib/edit-offer";
+import { EDIT_PRICE_CENTS, SHIRT_SHIP_ESTIMATE, editStatusLabel, editTrackLabel, shirtStatusLabel, trackingUrl } from "@/lib/edit-offer";
 import { accessMessage, getOrderAccess } from "@/lib/order-access";
 
 export const metadata: Metadata = {
@@ -105,7 +106,7 @@ export default async function OrderPage({ params }: OrderPageProps) {
             Your highlight edit has been ordered and your order has been received. Your professionally edited
             highlight video will be ready in about 5&ndash;7 days, or sooner. Your free BRYT VISION one-sleeve
             compression shirt ({editOrder.shirtColor}, size {editOrder.shirtSize}
-            {editOrder.shirtSleeve ? `, ${editOrder.shirtSleeve} sleeve` : ""}) is included with your $55 purchase at
+            {editOrder.shirtSleeve ? `, ${editOrder.shirtSleeve} sleeve` : ""}) is included with your {formatCents(EDIT_PRICE_CENTS)} purchase at
             no additional charge and will ship to the address you entered at checkout, usually within{" "}
             {SHIRT_SHIP_ESTIMATE} (estimate).
           </p>

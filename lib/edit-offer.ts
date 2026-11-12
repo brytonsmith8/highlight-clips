@@ -4,11 +4,11 @@ import { priceForCount } from "@/lib/pricing";
  * BRYT VISION EDIT + FREE SHIRT add-on. Pure rules shared by the browser (cart) and the server (checkout).
  * The server NEVER trusts the browser: /api/checkout re-checks everything here against the database.
  *
- * - Fixed $55 add-on on top of the normal clip price (it does NOT replace bundle pricing).
+ * - Fixed $55.50 add-on on top of the normal clip price (it does NOT replace bundle pricing).
  * - Needs at least 7 selected clips that belong to the SAME athlete profile (athlete id, never jersey number).
  * - The clips may come from different games and dates.
  */
-export const EDIT_PRICE_CENTS = 5500;
+export const EDIT_PRICE_CENTS = 5550;
 export const EDIT_MIN_CLIPS = 7;
 export const EDIT_TITLE = "BRYT VISION EDIT + FREE SHIRT";
 
@@ -86,7 +86,7 @@ export interface OrderTotals {
   totalCents: number;
 }
 
-/** Clips keep their normal $12.50 / $10.50 pricing; the edit is a fixed extra $55. */
+/** Clips keep their normal $12.50 / $10.50 pricing; the edit is a fixed extra $55.50. */
 export function orderTotals(clipCount: number, withEdit: boolean): OrderTotals {
   const clipTotalCents = priceForCount(clipCount).totalCents;
   const editCents = withEdit ? EDIT_PRICE_CENTS : 0;

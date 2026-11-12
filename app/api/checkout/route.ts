@@ -37,10 +37,10 @@ function parseEdit(raw: unknown): EditRequest | null | "invalid" {
  * per-clip `clips.price` column is ignored. Every clip id is validated: well-formed, no
  * duplicates, exists, published and has an original.
  *
- * Optional BRYT VISION EDIT + FREE SHIRT add-on (`edit`): a fixed extra $55 line item. The server
+ * Optional BRYT VISION EDIT + FREE SHIRT add-on (`edit`): a fixed extra $55.50 line item. The server
  * itself checks that at least 7 of the selected clips belong to the named athlete profile, that the
  * shirt options are real and in stock, and that the add-on table exists. It collects the shipping
- * address in Stripe Checkout (US only, free shipping: the shirt is included in the $55).
+ * address in Stripe Checkout (US only, free shipping: the shirt is included in the $55.50).
  *
  * Accepts `{ clipIds: string[], edit?: {...} }`; the older `{ clipId }` shape is still understood.
  */

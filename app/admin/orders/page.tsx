@@ -4,9 +4,11 @@ import Link from "next/link";
 import { requireAdminOrRedirect } from "@/lib/admin/auth";
 import { adminListOrders } from "@/lib/admin/queries";
 import { formatPrice } from "@/lib/format";
+import { formatCents } from "@/lib/pricing";
 import { effectiveAccess, listOrderAccessFlags } from "@/lib/order-access";
 import { listEditOrders } from "@/lib/edit-orders";
 import {
+  EDIT_PRICE_CENTS,
   EDIT_TRACK_STATUSES,
   SHIRT_CARRIERS,
   SHIRT_SHIP_ESTIMATE,
@@ -152,7 +154,7 @@ export default async function AdminOrdersPage() {
                     </dd>
                   </dl>
                   <p className="mt-3 text-xs text-muted">
-                    The free shirt is included with the $55 add-on (no extra charge). Estimated dispatch:{" "}
+                    The free shirt is included with the {formatCents(EDIT_PRICE_CENTS)} add-on (no extra charge). Estimated dispatch:{" "}
                     {SHIRT_SHIP_ESTIMATE}.
                   </p>
                   <form action={setEditTrackAction} className="mt-3 space-y-2 rounded border border-border p-2">

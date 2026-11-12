@@ -10,6 +10,7 @@ import {
 import { formatPrice } from "@/lib/format";
 import { adminClipMetaByIds, metaColumnsReady } from "@/lib/admin/clip-meta";
 import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
+import { adminJerseyOptions } from "@/lib/admin/saved-options";
 import { updateClipMeta } from "./meta-actions";
 import { NewClipForm } from "@/components/admin/new-clip-form";
 import { ConfirmButton } from "@/components/admin/confirm-button";
@@ -31,10 +32,11 @@ export default async function AdminClipsPage() {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
-  const [clipMeta, metaReady, athleteMeta] = await Promise.all([
+  const [clipMeta, metaReady, athleteMeta, jerseyOptions] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     metaColumnsReady(),
     adminAthleteMeta(),
+    adminJerseyOptions(),
   ]);
 
   return (
@@ -49,6 +51,7 @@ export default async function AdminClipsPage() {
       )}
 
       <NewClipForm
+        jerseyOptions={jerseyOptions}
         games={games.map((game) => ({
           id: game.id,
           label: `${game.school_a} vs ${game.school_b} · ${game.game_date}`,

@@ -53,13 +53,14 @@ export async function finalizeClip(input: {
 }): Promise<{ metaSaved: boolean }> {
   await requireAdmin();
 
-  const { clipId, gameId, athleteId, price, previewPath, originalPath } = input;
+  const { clipId, gameId, athleteId, previewPath, originalPath } = input;
+  const price = Math.round(input.price * 100) / 100; // whole cents
   const school = (input.school ?? "").trim().slice(0, 120) || null;
   const jerseyNumber = (input.jerseyNumber ?? "").trim().replace(/^#/, "").slice(0, 8) || null;
 
   if (!gameId) throw new Error("A game is required.");
-  if (!Number.isFinite(price) || price < 0) {
-    throw new Error("Price must be a non-negative number.");
+  if (!Number.isFinite(price) || price <= 0 || price > 1000) {
+    throw new Error("Price must be more than $0 and at most $1,000.");
   }
 
   // Both paths are derived from the clip id by startClipUpload; refuse anything else.

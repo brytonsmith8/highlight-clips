@@ -15,6 +15,7 @@ import { deleteClipAction, setClipPublished } from "@/app/admin/clips/actions";
 import { deleteGameAction } from "@/app/admin/games/actions";
 import { adminClipMetaByIds, adminGameSports, adminGameTitle } from "@/lib/admin/clip-meta";
 import { adminAthleteMeta } from "@/lib/admin/athlete-meta";
+import { listSavedOptions } from "@/lib/admin/saved-options";
 import { updateClipMeta, updateGameDetails } from "@/app/admin/clips/meta-actions";
 
 export const metadata: Metadata = {
@@ -39,11 +40,12 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
   ]);
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const purchaseCounts = await adminPurchaseCountsByClip(clips.map((c) => c.id));
-  const [clipMeta, sports, athleteMeta, gameTitle] = await Promise.all([
+  const [clipMeta, sports, athleteMeta, gameTitle, saved] = await Promise.all([
     adminClipMetaByIds(clips.map((c) => c.id)),
     adminGameSports(),
     adminAthleteMeta(),
     adminGameTitle(id),
+    listSavedOptions(),
   ]);
   const sport = sports.get(game.id) ?? "";
   const totalPurchases = clips.reduce(
@@ -89,6 +91,7 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
           <input type="hidden" name="gameId" value={game.id} />
           <input
             name="school_a"
+            list="saved-schools"
             defaultValue={game.school_a}
             required
             aria-label="Home school"
@@ -96,6 +99,7 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
           />
           <input
             name="school_b"
+            list="saved-schools"
             defaultValue={game.school_b}
             required
             aria-label="Away school / opponent"
@@ -111,6 +115,7 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
           />
           <input
             name="sport"
+            list="saved-sports"
             defaultValue={sport}
             placeholder="Sport"
             aria-label="Sport"
@@ -123,6 +128,16 @@ export default async function AdminGamePage({ params }: AdminGamePageProps) {
             aria-label="Game title or details"
             className="w-full rounded border border-border px-3 py-2"
           />
+          <datalist id="saved-schools">
+            {saved.schools.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+          <datalist id="saved-sports">
+            {saved.sports.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
           <button type="submit" className="rounded bg-accent px-3 py-2 font-medium text-white">
             Save game information
           </button>

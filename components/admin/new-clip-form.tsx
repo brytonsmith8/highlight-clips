@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 
 import { discardClipUpload, finalizeClip, startClipUpload } from "@/app/admin/clips/actions";
 import { createAthleteProfile } from "@/app/admin/athletes/actions";
-import { INDIVIDUAL_PRICE_CENTS } from "@/lib/pricing";
+import { DEFAULT_CLIP_PRICE_DOLLARS } from "@/lib/pricing";
 import { createClient } from "@/lib/supabase/client";
 
 export interface ClipFormGame {
@@ -37,6 +37,7 @@ interface Pending {
   previewBytes: number;
   originalName: string;
   gameId: string;
+  price: number;
   school: string;
   jersey: string;
   athleteId: string;
@@ -50,24 +51,40 @@ const inputClass = "w-full rounded border border-border px-3 py-2";
  * jersey number. Each original uploads straight from the browser to the PRIVATE Supabase bucket, the server
  * makes the blurred, watermarked, low-quality public preview with FFmpeg, and you review that preview before the
  * clip is saved (unpublished). Clips are handled one at a time, in order. Price is fixed by the site
- * ($12.50 each, or the bundle price for 4+), so there is no price box.
+ * (the site charges $12.50 each, or $10.50 each for 4+). The saved listing price defaults to $12.50 and can be edited.
  */
-export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athletes: ClipFormAthlete[] }) {
+export function NewClipForm({
+  games,
+  athletes,
+  jerseyOptions = {},
+}: {
+  games: ClipFormGame[];
+  athletes: ClipFormAthlete[];
+  /** Previously used jersey numbers per school (key: lower-case school name). */
+  jerseyOptions?: Record<string, string[]>;
+}) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [gameId, setGameId] = useState("");
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [current, setCurrent] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
+  const [priceText, setPriceText] = useState(DEFAULT_CLIP_PRICE_DOLLARS.toFixed(2));
   const [pending, setPending] = useState<Pending | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   // The latest queue/game for async steps (state would be stale inside them).
-  const live = useRef<{ queue: QueueItem[]; gameId: string }>({ queue: [], gameId: "" });
+  const live = useRef<{ queue: QueueItem[]; gameId: string; price: number }>({
+    queue: [],
+    gameId: "",
+    price: DEFAULT_CLIP_PRICE_DOLLARS,
+  });
   // New athlete profiles already created during this batch, so five clips of #3 make ONE profile.
   const created = useRef(new Map<string, string>());
 
   const game = games.find((g) => g.id === gameId);
   const schools = game?.schools ?? [];
+  const priceValue = Number(priceText);
+  const priceOk = Number.isFinite(priceValue) && priceValue > 0 && priceValue <= 1000;
 
   function onGameChange(id: string) {
     setGameId(id);
@@ -150,6 +167,7 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
         previewBytes: result.bytes ?? 0,
         originalName: item.file.name,
         gameId: gId,
+        price: live.current.price,
         school: item.school,
         jersey: item.jersey.trim().replace(/^#/, ""),
         athleteId: item.athleteId,
@@ -189,7 +207,8 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
     if (!gameId) return setStatus("Pick a game.");
     if (queue.length === 0) return setStatus("Choose at least one video.");
     if (queue.some((q) => !q.school)) return setStatus("Choose a school for every clip.");
-    live.current = { queue, gameId };
+    if (!priceOk) return setStatus("Enter a listing price above $0 (the default is $12.50).");
+    live.current = { queue, gameId, price: Math.round(priceValue * 100) / 100 };
     await runItem(0);
   }
 
@@ -213,7 +232,7 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
         clipId: pending.clipId,
         gameId: pending.gameId,
         athleteId,
-        price: INDIVIDUAL_PRICE_CENTS / 100,
+        price: pending.price,
         previewPath: pending.previewPath,
         originalPath: pending.originalPath,
         school: pending.school,
@@ -294,6 +313,28 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
         />
       </label>
 
+      <label className="block text-sm text-muted">
+        Listing price per clip (dollars)
+        <input
+          name="price"
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min="0.01"
+          max="1000"
+          value={priceText}
+          disabled={working}
+          onChange={(e) => setPriceText(e.target.value)}
+          onBlur={() => priceOk && setPriceText(priceValue.toFixed(2))}
+          className="mt-1 w-32 rounded border border-border px-3 py-2 text-foreground"
+        />
+        <span className="mt-1 block text-xs">
+          Defaults to {DEFAULT_CLIP_PRICE_DOLLARS.toFixed(2)} for every new clip. This is the price saved on the clip.
+          What customers are charged at checkout is set by the site ($12.50 each for 1&ndash;3 clips, $10.50 each for 4 or
+          more).
+        </span>
+      </label>
+
       {queue.length > 0 && (
         <ul className="space-y-2">
           {queue.map((item, i) => (
@@ -323,6 +364,7 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
                 </select>
                 <input
                   aria-label={`Jersey number for ${item.file.name}`}
+                  list={`jersey-options-${i}`}
                   inputMode="numeric"
                   maxLength={8}
                   placeholder="Jersey #"
@@ -331,6 +373,11 @@ export function NewClipForm({ games, athletes }: { games: ClipFormGame[]; athlet
                   onChange={(e) => patchItem(i, { jersey: e.target.value })}
                   className="w-full rounded border border-border px-2 py-2 text-sm"
                 />
+                <datalist id={`jersey-options-${i}`}>
+                  {(jerseyOptions[item.school.trim().toLowerCase().replace(/\s*&\s*/g, " and ")] ?? []).map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <select
