@@ -9,6 +9,8 @@ import { getDashboardStats, getRecentClips, parseStatusFilter } from "@/lib/admi
 import { createAthlete } from "@/app/admin/athletes/actions";
 import { UploadWorkspace } from "@/components/admin/upload-workspace";
 import { RecentClips } from "@/components/admin/recent-clips";
+import { ActivityList } from "@/components/admin/activity-list";
+import { getActivity } from "@/lib/admin/activity";
 
 export const metadata: Metadata = {
   title: "Admin",
@@ -42,7 +44,7 @@ export default async function AdminDashboard({
 }) {
   await requireAdminOrRedirect();
   const status = parseStatusFilter((await searchParams).status);
-  const [stats, recent, games, athletes, athleteMeta, saved, jerseyOptions] = await Promise.all([
+  const [stats, recent, games, athletes, athleteMeta, saved, jerseyOptions, activity] = await Promise.all([
     getDashboardStats(),
     getRecentClips({ status, limit: 12 }),
     adminListGames(),
@@ -50,6 +52,7 @@ export default async function AdminDashboard({
     adminAthleteMeta(),
     listSavedOptions(),
     adminJerseyOptions(),
+    getActivity({ limit: 6 }),
   ]);
   const athleteChoices = athletes.map((a) => ({
     id: a.id,
@@ -132,6 +135,16 @@ export default async function AdminDashboard({
         </details>
 
         <RecentClips data={recent} status={status} athletes={athleteChoices} />
+
+        <section aria-label="Recent activity" className="mt-8">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-bold tracking-tight">Recent activity</h2>
+            <Link href="/admin/activity" className="text-sm text-accent hover:underline">
+              See all activity
+            </Link>
+          </div>
+          <ActivityList items={activity.items} />
+        </section>
       </div>
     </div>
   );
