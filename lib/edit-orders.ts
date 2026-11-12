@@ -431,10 +431,12 @@ export async function setEditTrack(
 /**
  * Admin: update the shirt shipment. Shipped needs a carrier and a tracking number. When asked, emails the customer
  * the tracking details (never for a refunded / disputed order, and never for an unpaid one).
+ * `markEmailed` only RECORDS that the tracking was emailed (for when the admin emailed the customer personally);
+ * it sends nothing, and is ignored when the site itself sends the email.
  */
 export async function setShirtFulfillment(
   sessionId: string,
-  input: { status: string; carrier: string | null; tracking: string | null; emailCustomer: boolean },
+  input: { status: string; carrier: string | null; tracking: string | null; emailCustomer: boolean; markEmailed?: boolean },
 ): Promise<{ ok: boolean; message: string }> {
   if (!SHIRT_STATUSES.some((s) => s.id === input.status)) return { ok: false, message: "Unknown shirt status." };
   const status = input.status as ShirtStatus;
@@ -489,6 +491,11 @@ export async function setShirtFulfillment(
         emailNote = " The tracking email could NOT be sent (saved anyway); try again.";
       }
     }
+  }
+
+  if (input.markEmailed && !input.emailCustomer && (status === "shipped" || status === "delivered") && carrier && tracking) {
+    patch.tracking_emailed_at = now;
+    emailNote = " Recorded as emailed (no email was sent from the site).";
   }
 
   const { error } = await supabase.from("edit_orders").update(patch).eq("stripe_session_id", sessionId);

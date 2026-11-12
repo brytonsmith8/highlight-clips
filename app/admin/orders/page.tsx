@@ -205,6 +205,10 @@ export default async function AdminOrdersPage() {
                       <input type="checkbox" name="emailCustomer" defaultChecked={!e.tracking_emailed_at} />
                       Email the customer the tracking info (when marking Shipped or Delivered)
                     </label>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" name="markEmailed" />
+                      I already emailed the tracking myself: just record it as emailed (sends nothing)
+                    </label>
                     <div className="flex flex-wrap items-center gap-3">
                       <button type="submit" className="rounded bg-accent px-3 py-2 font-medium text-white">Save shirt status</button>
                       {e.tracking_emailed_at && (

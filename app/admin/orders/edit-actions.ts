@@ -37,6 +37,7 @@ export async function setShirtFulfillmentAction(formData: FormData) {
     carrier: String(formData.get("carrier") ?? ""),
     tracking: String(formData.get("tracking") ?? ""),
     emailCustomer: formData.get("emailCustomer") === "on",
+    markEmailed: formData.get("markEmailed") === "on",
   });
   if (!result.ok) throw new Error(result.message);
   revalidatePath("/admin/orders");
