@@ -432,7 +432,7 @@ export function CartSummary() {
             {formatCents(BUNDLE_PRICE_CENTS)} each.
           </p>
           <p className="mt-1 text-xs text-gray-600">
-            Tick &ldquo;Select&rdquo; on the clips you want, or use Buy on a single clip.
+            Click &ldquo;Select&rdquo; on the clips you want, or use Buy on a single clip.
           </p>
         </>
       ) : (
