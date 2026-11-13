@@ -9,6 +9,8 @@
  */
 export const INDIVIDUAL_PRICE_CENTS = 1250;
 export const BUNDLE_PRICE_CENTS = 1050;
+/** Listing price recorded on every new highlight (dollars). The admin shows this by default. */
+export const DEFAULT_CLIP_PRICE_DOLLARS = INDIVIDUAL_PRICE_CENTS / 100;
 export const BUNDLE_MIN_CLIPS = 4;
 /** Stripe metadata values are capped at 500 characters; 12 clip ids fit with room to spare. */
 export const MAX_CLIPS_PER_ORDER = 12;

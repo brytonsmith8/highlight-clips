@@ -22,6 +22,7 @@ function clean(formData: FormData, key: string, max = 120): string {
 }
 
 function revalidateAthletes() {
+  revalidatePath("/admin");
   revalidatePath("/admin/athletes");
   revalidatePath("/admin/clips");
   revalidatePath("/clips");

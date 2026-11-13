@@ -4,107 +4,75 @@ import Link from "next/link";
 import { requireAdminOrRedirect } from "@/lib/admin/auth";
 import { adminListGames } from "@/lib/admin/queries";
 import { adminGameSports } from "@/lib/admin/clip-meta";
+import { listSavedOptions } from "@/lib/admin/saved-options";
 import { formatGameDate } from "@/lib/format";
-import { createGame } from "./actions";
+import { NewGameForm } from "@/components/admin/new-game-form";
 
 export const metadata: Metadata = {
   title: "Admin · Games",
   robots: { index: false, follow: false },
 };
 
-const SPORT_SUGGESTIONS = [
-  "Football",
-  "Basketball",
-  "Baseball",
-  "Softball",
-  "Soccer",
-  "Volleyball",
-  "Track & Field",
-  "Cross Country",
-  "Wrestling",
-  "Tennis",
-  "Golf",
-  "Swimming",
-  "Cheer",
-  "Other",
-];
+interface AdminGamesPageProps {
+  searchParams: Promise<{ home?: string; away?: string; sport?: string }>;
+}
 
-export default async function AdminGamesPage() {
+function one(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
+
+export default async function AdminGamesPage({ searchParams }: AdminGamesPageProps) {
   await requireAdminOrRedirect();
-  const [games, sports] = await Promise.all([adminListGames(), adminGameSports()]);
+  const params = await searchParams;
+  const [games, sports, saved] = await Promise.all([adminListGames(), adminGameSports(), listSavedOptions()]);
+  const defaults = { home: one(params.home), away: one(params.away), sport: one(params.sport) };
+  const formKey = `${defaults.home}|${defaults.away}|${defaults.sport}`;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-bold tracking-tight">Games</h1>
 
-      <form
-        action={createGame}
-        className="mt-6 space-y-3 rounded-lg border border-border p-4"
-      >
-        <h2 className="font-semibold">New game</h2>
-        <p className="text-sm text-muted">
-          One listing per game. Add every athlete&apos;s clips to it afterwards, so you never need a separate game for each
-          athlete.
-        </p>
-        <input
-          name="school_a"
-          placeholder="Home school"
-          required
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <input
-          name="school_b"
-          placeholder="Away school / opponent"
-          required
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <input
-          name="game_date"
-          type="date"
-          required
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <input
-          name="sport"
-          list="sport-suggestions"
-          placeholder="Sport (Football, Basketball, Baseball…)"
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <input
-          name="title"
-          placeholder="Game title or details (optional)"
-          className="w-full rounded border border-border px-3 py-2"
-        />
-        <datalist id="sport-suggestions">
-          {SPORT_SUGGESTIONS.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-        <button
-          type="submit"
-          className="rounded bg-accent px-3 py-2 font-medium text-white"
-        >
-          Create game
-        </button>
-      </form>
+      <NewGameForm
+        key={formKey}
+        schools={saved.schools}
+        sports={saved.sports}
+        defaults={defaults}
+        tablesReady={saved.tablesReady}
+      />
 
-      <div className="mt-6 space-y-2">
+      <h2 className="mt-8 font-semibold">Game history</h2>
+      <p className="text-sm text-muted">
+        Every game is its own record. Use &ldquo;Same matchup&rdquo; to start a new game with the same teams and sport,
+        then pick the new date.
+      </p>
+      <div className="mt-3 space-y-2">
         {games.length === 0 && <p className="text-muted">No games yet.</p>}
-        {games.map((game) => (
-          <Link
-            key={game.id}
-            href={`/admin/games/${game.id}`}
-            className="block rounded-lg border border-border p-3 transition-colors hover:border-accent"
-          >
-            <p className="font-medium">
-              {game.school_a} vs {game.school_b}
-            </p>
-            <p className="text-sm text-muted">
-              {formatGameDate(game.game_date)}
-              {sports.get(game.id) ? ` · ${sports.get(game.id)}` : ""} &middot; {game.id}
-            </p>
-          </Link>
-        ))}
+        {games.map((game) => {
+          const sport = sports.get(game.id) ?? "";
+          const again = new URLSearchParams({ home: game.school_a, away: game.school_b, ...(sport ? { sport } : {}) });
+          return (
+            <div
+              key={game.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 transition-colors hover:border-accent"
+            >
+              <Link href={`/admin/games/${game.id}`} className="min-w-0 flex-1">
+                <p className="font-medium">
+                  {game.school_a} vs {game.school_b}
+                </p>
+                <p className="text-sm text-muted [overflow-wrap:anywhere]">
+                  {formatGameDate(game.game_date)}
+                  {sport ? ` · ${sport}` : ""} &middot; {game.id}
+                </p>
+              </Link>
+              <Link
+                href={`/admin/games?${again.toString()}`}
+                className="whitespace-nowrap rounded border border-border px-2 py-1 text-xs hover:border-accent"
+              >
+                Same matchup
+              </Link>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
